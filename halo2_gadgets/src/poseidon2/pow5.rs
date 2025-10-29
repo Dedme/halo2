@@ -611,7 +611,7 @@ mod tests {
     use rand::rngs::OsRng;
 
     use super::{PoseidonInstructions, Pow5Chip, Pow5Config, StateWord};
-    use crate::poseidon::{
+    use crate::poseidon2::{
         primitives::{self as poseidon, ConstantLength, P128Pow5T3 as OrchardNullifier, Spec},
         Hash,
     };
@@ -875,7 +875,7 @@ mod tests {
 
     #[test]
     fn hash_test_vectors() {
-        for tv in crate::poseidon::primitives::test_vectors::fp::hash() {
+        for tv in crate::poseidon2::primitives::test_vectors::fp::hash() {
             let message = [
                 pallas::Base::from_repr(tv.input[0]).unwrap(),
                 pallas::Base::from_repr(tv.input[1]).unwrap(),
@@ -884,7 +884,7 @@ mod tests {
                 .hash(message);
 
             let k = 6;
-            let circuit: MyHashCircuit<OrchardNullifier, 3, 2, 2> = MyHashCircuit::<OrchardNullifier, 3, 2, 2> {
+            let circuit = MyHashCircuit::<OrchardNullifier, 3, 2, 2> {
                 message: Value::known(message),
                 output: Value::known(output),
                 _spec: PhantomData,

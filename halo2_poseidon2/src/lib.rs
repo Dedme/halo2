@@ -24,6 +24,8 @@ pub mod test_vectors;
 
 mod p128pow5t3;
 pub use p128pow5t3::P128Pow5T3;
+mod p128pow7t3;
+pub use p128pow7t3::P128Pow7T3;
 
 use grain::SboxType;
 

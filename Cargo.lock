@@ -853,6 +853,7 @@ dependencies = [
  "ff",
  "group",
  "halo2_poseidon",
+ "halo2_poseidon2",
  "halo2_proofs",
  "inferno",
  "lazy_static",

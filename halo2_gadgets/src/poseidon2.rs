@@ -15,7 +15,7 @@ pub use pow5::{Pow5Chip, Pow5Config, StateWord};
 mod pow7;
 pub use pow7::{Pow7Chip, Pow7Config};
 
-pub use ::halo2_poseidon as primitives;
+pub use ::halo2_poseidon2 as primitives;
 use primitives::{Absorbing, ConstantLength, Domain, Spec, SpongeMode, Squeezing, State};
 
 /// A word from the padded input to a Poseidon sponge.
