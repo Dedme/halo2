@@ -88,7 +88,8 @@ impl<F: Field, const WIDTH: usize, const RATE: usize> Pow7Chip<F, WIDTH, RATE> {
         let alpha = [7, 0, 0, 0];
         let pow_7 = |v: Expression<F>| {
             let v2 = v.clone() * v.clone();
-            v2.clone() * v2 * v
+            let v4 = v2.clone() * v2.clone();
+            v4 * v2 * v
         };
 
         meta.create_gate("full round", |meta| {
@@ -875,7 +876,7 @@ mod tests {
 
     #[test]
     fn hash_test_vectors() {
-        for tv in crate::poseidon::primitives::test_vectors::fp::hash() {
+        for tv in crate::poseidon::primitives::test_vectors_7t3::fp::hash() {
             let message = [
                 pallas::Base::from_repr(tv.input[0]).unwrap(),
                 pallas::Base::from_repr(tv.input[1]).unwrap(),

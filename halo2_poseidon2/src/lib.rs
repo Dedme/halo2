@@ -20,13 +20,19 @@ pub(crate) mod grain;
 pub(crate) mod mds;
 
 #[cfg(any(test, feature = "test-dependencies"))]
-pub mod test_vectors;
+pub mod test_vectors_5t3;
 
 mod p128pow5t3;
 pub use p128pow5t3::P128Pow5T3;
+
+pub(crate) mod fp_pow7;
+pub(crate) mod fq_pow7;
+
+#[cfg(any(test, feature = "test-dependencies"))]
+pub mod test_vectors_7t3;
+
 mod p128pow7t3;
 pub use p128pow7t3::P128Pow7T3;
-
 use grain::SboxType;
 
 /// The type used to hold permutation state.

@@ -8,6 +8,144 @@
 //! ```
 use pasta_curves::pallas;
 
+// Secure MDS: 0
+// n: 255
+// t: 3
+// N: 765
+// Result Algorithm 1:
+//  [True, 0]
+// Result Algorithm 2:
+//  [True, None]
+// Result Algorithm 3:
+//  [True, None]
+// Prime number: 0x40000000000000000000000000000000224698fc094cf91b992d30ed00000001
+// MDS matrix:
+pub(crate) const MDS: [[pallas::Base; 3]; 3] = [
+    [
+        pallas::Base::from_raw([
+            0x323f_2486_d7e1_1b63,
+            0x97d7_a0ab_2385_0b56,
+            0xb3d5_9fbd_c8c9_ead4,
+            0x0ab5_e5b8_74a6_8de7,
+        ]),
+        pallas::Base::from_raw([
+            0x8eca_5596_e996_ab5e,
+            0x240d_4a7c_bf73_5736,
+            0x293f_0f0d_886c_7954,
+            0x3191_6628_e58a_5abb,
+        ]),
+        pallas::Base::from_raw([
+            0x19d1_cf25_d8e8_345d,
+            0xa0a3_b71a_5fb1_5735,
+            0xd803_952b_bb36_4fdf,
+            0x07c0_45d5_f5e9_e5a6,
+        ]),
+    ],
+    [
+        pallas::Base::from_raw([
+            0xd049_cdc8_d085_167c,
+            0x3a0a_4640_48bd_770a,
+            0xf8e2_4f66_822c_2d9f,
+            0x2331_6263_0ebf_9ed7,
+        ]),
+        pallas::Base::from_raw([
+            0x4022_7011_3e04_7a2e,
+            0x78f8_365c_85bb_ab07,
+            0xb366_6454_8d60_957d,
+            0x25ca_e259_9892_a8b0,
+        ]),
+        pallas::Base::from_raw([
+            0xf84d_806f_685f_747a,
+            0x9aad_3d82_62ef_d83f,
+            0x7493_8717_989a_1957,
+            0x22f5_b5e1_e608_1c97,
+        ]),
+    ],
+    [
+        pallas::Base::from_raw([
+            0xfee7_a994_4f84_dbe4,
+            0x2168_0eab_c56b_c15d,
+            0xf333_aa91_c383_3464,
+            0x2e29_dd59_c64b_1037,
+        ]),
+        pallas::Base::from_raw([
+            0xc771_effa_4326_3664,
+            0xcbea_f48b_3a06_24c3,
+            0x92d1_5e7d_ceef_1665,
+            0x1d1a_ab4e_c1cd_6788,
+        ]),
+        pallas::Base::from_raw([
+            0x1563_9415_f6e8_5ef1,
+            0x7587_2c39_b59a_31f6,
+            0x51e0_cbea_d655_16b9,
+            0x3bf7_6308_6a18_9364,
+        ]),
+    ],
+];
+
+pub(crate) const MDS_INV: [[pallas::Base; 3]; 3] = [
+    [
+        pallas::Base::from_raw([
+            0xc6de_463c_d140_4e6b,
+            0x4543_705f_35e9_8ab5,
+            0xcc59_ffd0_0de8_6443,
+            0x2cc0_57f3_fa14_687a,
+        ]),
+        pallas::Base::from_raw([
+            0x1718_4041_7cab_7576,
+            0xfadb_f8ae_7ae2_4796,
+            0x5fd7_2b55_df20_8385,
+            0x32e7_c439_f2f9_67e5,
+        ]),
+        pallas::Base::from_raw([
+            0x9426_45bd_7d44_64e0,
+            0x1403_db6f_5030_2040,
+            0xf461_778a_bf6c_91fa,
+            0x2eae_5df8_c311_5969,
+        ]),
+    ],
+    [
+        pallas::Base::from_raw([
+            0xa1ca_1516_a4a1_a6a0,
+            0x13f0_74fd_e9a1_8b29,
+            0xdb18_b4ae_fe68_d26d,
+            0x07bf_3684_8106_7199,
+        ]),
+        pallas::Base::from_raw([
+            0xe824_25bc_1b23_a059,
+            0xbb1d_6504_0c85_c1bf,
+            0x018a_918b_9dac_5dad,
+            0x2aec_6906_c63f_3cf1,
+        ]),
+        pallas::Base::from_raw([
+            0xe054_1adf_238e_0781,
+            0x76b2_a713_9db7_1b36,
+            0x1215_944a_64a2_46b2,
+            0x0952_e024_3aec_2af0,
+        ]),
+    ],
+    [
+        pallas::Base::from_raw([
+            0x2a41_8d8d_73a7_c908,
+            0xaef9_112e_952f_dbb5,
+            0x723a_63a0_c09d_ab26,
+            0x2fcb_ba6f_9159_a219,
+        ]),
+        pallas::Base::from_raw([
+            0x76ef_ab42_d4fb_a90b,
+            0xc5e4_960d_7424_cd37,
+            0xb4dd_d4b4_d645_2256,
+            0x1ec7_3725_74f3_851b,
+        ]),
+        pallas::Base::from_raw([
+            0xadc8_933c_6f3c_72ee,
+            0x87a7_435d_30f8_be81,
+            0x3c26_fa4b_7d25_b1e4,
+            0x0d0c_2efd_6472_f12a,
+        ]),
+    ],
+];
+
 // Number of round constants: 192
 // Round constants for GF(p):
 pub(crate) const ROUND_CONSTANTS: [[pallas::Base; 3]; 64] = [
@@ -1289,143 +1427,6 @@ pub(crate) const ROUND_CONSTANTS: [[pallas::Base; 3]; 64] = [
             0xa004_abe8_e015_28c4,
             0x5c1e_3e9e_27a5_71c3,
             0x3a8a_6282_9512_1d5c,
-        ]),
-    ],
-];
-// Secure MDS: 0
-// n: 255
-// t: 3
-// N: 765
-// Result Algorithm 1:
-//  [True, 0]
-// Result Algorithm 2:
-//  [True, None]
-// Result Algorithm 3:
-//  [True, None]
-// Prime number: 0x40000000000000000000000000000000224698fc094cf91b992d30ed00000001
-// MDS matrix:
-pub(crate) const MDS: [[pallas::Base; 3]; 3] = [
-    [
-        pallas::Base::from_raw([
-            0x323f_2486_d7e1_1b63,
-            0x97d7_a0ab_2385_0b56,
-            0xb3d5_9fbd_c8c9_ead4,
-            0x0ab5_e5b8_74a6_8de7,
-        ]),
-        pallas::Base::from_raw([
-            0x8eca_5596_e996_ab5e,
-            0x240d_4a7c_bf73_5736,
-            0x293f_0f0d_886c_7954,
-            0x3191_6628_e58a_5abb,
-        ]),
-        pallas::Base::from_raw([
-            0x19d1_cf25_d8e8_345d,
-            0xa0a3_b71a_5fb1_5735,
-            0xd803_952b_bb36_4fdf,
-            0x07c0_45d5_f5e9_e5a6,
-        ]),
-    ],
-    [
-        pallas::Base::from_raw([
-            0xd049_cdc8_d085_167c,
-            0x3a0a_4640_48bd_770a,
-            0xf8e2_4f66_822c_2d9f,
-            0x2331_6263_0ebf_9ed7,
-        ]),
-        pallas::Base::from_raw([
-            0x4022_7011_3e04_7a2e,
-            0x78f8_365c_85bb_ab07,
-            0xb366_6454_8d60_957d,
-            0x25ca_e259_9892_a8b0,
-        ]),
-        pallas::Base::from_raw([
-            0xf84d_806f_685f_747a,
-            0x9aad_3d82_62ef_d83f,
-            0x7493_8717_989a_1957,
-            0x22f5_b5e1_e608_1c97,
-        ]),
-    ],
-    [
-        pallas::Base::from_raw([
-            0xfee7_a994_4f84_dbe4,
-            0x2168_0eab_c56b_c15d,
-            0xf333_aa91_c383_3464,
-            0x2e29_dd59_c64b_1037,
-        ]),
-        pallas::Base::from_raw([
-            0xc771_effa_4326_3664,
-            0xcbea_f48b_3a06_24c3,
-            0x92d1_5e7d_ceef_1665,
-            0x1d1a_ab4e_c1cd_6788,
-        ]),
-        pallas::Base::from_raw([
-            0x1563_9415_f6e8_5ef1,
-            0x7587_2c39_b59a_31f6,
-            0x51e0_cbea_d655_16b9,
-            0x3bf7_6308_6a18_9364,
-        ]),
-    ],
-];
-
-pub(crate) const MDS_INV: [[pallas::Base; 3]; 3] = [
-    [
-        pallas::Base::from_raw([
-            0xc6de_463c_d140_4e6b,
-            0x4543_705f_35e9_8ab5,
-            0xcc59_ffd0_0de8_6443,
-            0x2cc0_57f3_fa14_687a,
-        ]),
-        pallas::Base::from_raw([
-            0x1718_4041_7cab_7576,
-            0xfadb_f8ae_7ae2_4796,
-            0x5fd7_2b55_df20_8385,
-            0x32e7_c439_f2f9_67e5,
-        ]),
-        pallas::Base::from_raw([
-            0x9426_45bd_7d44_64e0,
-            0x1403_db6f_5030_2040,
-            0xf461_778a_bf6c_91fa,
-            0x2eae_5df8_c311_5969,
-        ]),
-    ],
-    [
-        pallas::Base::from_raw([
-            0xa1ca_1516_a4a1_a6a0,
-            0x13f0_74fd_e9a1_8b29,
-            0xdb18_b4ae_fe68_d26d,
-            0x07bf_3684_8106_7199,
-        ]),
-        pallas::Base::from_raw([
-            0xe824_25bc_1b23_a059,
-            0xbb1d_6504_0c85_c1bf,
-            0x018a_918b_9dac_5dad,
-            0x2aec_6906_c63f_3cf1,
-        ]),
-        pallas::Base::from_raw([
-            0xe054_1adf_238e_0781,
-            0x76b2_a713_9db7_1b36,
-            0x1215_944a_64a2_46b2,
-            0x0952_e024_3aec_2af0,
-        ]),
-    ],
-    [
-        pallas::Base::from_raw([
-            0x2a41_8d8d_73a7_c908,
-            0xaef9_112e_952f_dbb5,
-            0x723a_63a0_c09d_ab26,
-            0x2fcb_ba6f_9159_a219,
-        ]),
-        pallas::Base::from_raw([
-            0x76ef_ab42_d4fb_a90b,
-            0xc5e4_960d_7424_cd37,
-            0xb4dd_d4b4_d645_2256,
-            0x1ec7_3725_74f3_851b,
-        ]),
-        pallas::Base::from_raw([
-            0xadc8_933c_6f3c_72ee,
-            0x87a7_435d_30f8_be81,
-            0x3c26_fa4b_7d25_b1e4,
-            0x0d0c_2efd_6472_f12a,
         ]),
     ],
 ];

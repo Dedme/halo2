@@ -22,3 +22,7 @@ pasta_curves = "0.5"
 
 [features]
 test-dependencies = []
+
+[[example]]
+name = "generate_pow7_vectors"
+required-features = ["test-dependencies"]

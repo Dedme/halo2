@@ -8,6 +8,143 @@
 //! ```
 use pasta_curves::vesta;
 
+// n: 255
+// t: 3
+// N: 765
+// Result Algorithm 1:
+//  [True, 0]
+// Result Algorithm 2:
+//  [True, None]
+// Result Algorithm 3:
+//  [True, None]
+// Prime number: 0x40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001
+// MDS matrix:
+pub(crate) const MDS: [[vesta::Base; 3]; 3] = [
+    [
+        vesta::Base::from_raw([
+            0xeb4f_1f74_2963_421f,
+            0x5f71_0afc_43dd_c5f6,
+            0x9191_3f56_cf21_af2b,
+            0x1853_b497_7c6f_a227,
+        ]),
+        vesta::Base::from_raw([
+            0x45e5_1db6_ac6f_e4a7,
+            0x5a0f_a4df_a500_bcad,
+            0x63f4_84c1_0fcf_0586,
+            0x3d83_1189_cfbb_c452,
+        ]),
+        vesta::Base::from_raw([
+            0xd188_37f9_8347_f137,
+            0x3f89_65c7_8083_8a94,
+            0x4ba8_8b9e_4017_19c0,
+            0x3a0e_3f84_d3c1_77d8,
+        ]),
+    ],
+    [
+        vesta::Base::from_raw([
+            0x84fd_7923_337c_f77e,
+            0x2896_f8d0_fd5c_9a75,
+            0x8e9d_c529_f471_8f83,
+            0x35e2_6e39_8450_6279,
+        ]),
+        vesta::Base::from_raw([
+            0x3eb9_24f5_6fff_7908,
+            0x3641_cecf_3a2a_5a8a,
+            0x00cd_7dbe_a799_70ab,
+            0x10a8_1663_02cb_753c,
+        ]),
+        vesta::Base::from_raw([
+            0xb672_27c1_a141_ae94,
+            0x198e_1aee_777e_2521,
+            0xf434_92ce_5121_4b00,
+            0x314f_762a_506d_321b,
+        ]),
+    ],
+    [
+        vesta::Base::from_raw([
+            0xabcb_d614_eaf5_eba1,
+            0xa90f_28b0_cb31_76fb,
+            0xcb2e_ab86_ef31_d915,
+            0x07b8_5627_c832_782a,
+        ]),
+        vesta::Base::from_raw([
+            0xc255_efd0_06b5_db1c,
+            0xb5d9_85dc_1630_a4b2,
+            0x9756_4e1b_5d1a_c72f,
+            0x2a2d_e13e_70f2_7e16,
+        ]),
+        vesta::Base::from_raw([
+            0xcffd_f529_3334_29fc,
+            0x21e3_af7e_f123_32cd,
+            0xfff5_40a8_7327_c7ce,
+            0x2c60_94d1_c6e1_caba,
+        ]),
+    ],
+];
+
+pub(crate) const MDS_INV: [[vesta::Base; 3]; 3] = [
+    [
+        vesta::Base::from_raw([
+            0xb204_ddc6_5e58_2044,
+            0x47a6_0484_b0a9_9c91,
+            0xcaf5_4d78_24c1_200e,
+            0x36df_4950_21cf_7828,
+        ]),
+        vesta::Base::from_raw([
+            0x6a6b_94ad_aa0d_9c9e,
+            0xe2cd_38b9_59d4_61ff,
+            0xe43e_c4bf_3e0d_f00c,
+            0x034f_beae_4650_c2c7,
+        ]),
+        vesta::Base::from_raw([
+            0xa862_7a02_8c1a_f7d6,
+            0x841b_ebf1_a15b_746e,
+            0x1fd5_6832_d0ab_5570,
+            0x20a8_64d6_790f_7c1c,
+        ]),
+    ],
+    [
+        vesta::Base::from_raw([
+            0x3470_d5c5_53bc_9d20,
+            0x1f95_660f_eb5d_b121,
+            0xdd31_97ac_c894_9076,
+            0x2d08_703d_48ec_d7dc,
+        ]),
+        vesta::Base::from_raw([
+            0x6b5b_42b0_67d8_30f3,
+            0x6169_b6fa_721a_470e,
+            0xeff3_18a2_8983_158a,
+            0x2db1_0ecd_507a_2f27,
+        ]),
+        vesta::Base::from_raw([
+            0xfbae_b537_d278_4760,
+            0x0068_e709_07e7_089d,
+            0x926a_5fc0_cc1e_f726,
+            0x0c8a_58c0_6473_cdfa,
+        ]),
+    ],
+    [
+        vesta::Base::from_raw([
+            0x3a5a_ca10_7129_6e61,
+            0x4ad4_442e_96c9_d5e8,
+            0x5432_f0c0_b908_a411,
+            0x2a64_2dca_695d_744d,
+        ]),
+        vesta::Base::from_raw([
+            0x1bd9_bfcb_be02_5ff1,
+            0x24f6_ad43_b703_ad90,
+            0xebb7_238d_f00d_17e7,
+            0x114e_c796_fb40_3f5f,
+        ]),
+        vesta::Base::from_raw([
+            0x67f0_642e_14a9_c3bf,
+            0xf6a6_9176_7069_7a97,
+            0x0408_110d_c66e_b147,
+            0x2825_e067_5968_dbeb,
+        ]),
+    ],
+];
+
 // Number of round constants: 192
 // Round constants for GF(p):
 pub(crate) const ROUND_CONSTANTS: [[vesta::Base; 3]; 64] = [
@@ -1289,143 +1426,6 @@ pub(crate) const ROUND_CONSTANTS: [[vesta::Base; 3]; 64] = [
             0xa004_abe8_e015_28c4,
             0x5c1e_3e9e_27a5_71c3,
             0x3a8a_6282_9512_1d5c,
-        ]),
-    ],
-];
-
-// n: 255
-// t: 3
-// N: 765
-// Result Algorithm 1:
-//  [True, 0]
-// Result Algorithm 2:
-//  [True, None]
-// Result Algorithm 3:
-//  [True, None]
-// Prime number: 0x40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001
-// MDS matrix:
-pub(crate) const MDS: [[vesta::Base; 3]; 3] = [
-    [
-        vesta::Base::from_raw([
-            0xeb4f_1f74_2963_421f,
-            0x5f71_0afc_43dd_c5f6,
-            0x9191_3f56_cf21_af2b,
-            0x1853_b497_7c6f_a227,
-        ]),
-        vesta::Base::from_raw([
-            0x45e5_1db6_ac6f_e4a7,
-            0x5a0f_a4df_a500_bcad,
-            0x63f4_84c1_0fcf_0586,
-            0x3d83_1189_cfbb_c452,
-        ]),
-        vesta::Base::from_raw([
-            0xd188_37f9_8347_f137,
-            0x3f89_65c7_8083_8a94,
-            0x4ba8_8b9e_4017_19c0,
-            0x3a0e_3f84_d3c1_77d8,
-        ]),
-    ],
-    [
-        vesta::Base::from_raw([
-            0x84fd_7923_337c_f77e,
-            0x2896_f8d0_fd5c_9a75,
-            0x8e9d_c529_f471_8f83,
-            0x35e2_6e39_8450_6279,
-        ]),
-        vesta::Base::from_raw([
-            0x3eb9_24f5_6fff_7908,
-            0x3641_cecf_3a2a_5a8a,
-            0x00cd_7dbe_a799_70ab,
-            0x10a8_1663_02cb_753c,
-        ]),
-        vesta::Base::from_raw([
-            0xb672_27c1_a141_ae94,
-            0x198e_1aee_777e_2521,
-            0xf434_92ce_5121_4b00,
-            0x314f_762a_506d_321b,
-        ]),
-    ],
-    [
-        vesta::Base::from_raw([
-            0xabcb_d614_eaf5_eba1,
-            0xa90f_28b0_cb31_76fb,
-            0xcb2e_ab86_ef31_d915,
-            0x07b8_5627_c832_782a,
-        ]),
-        vesta::Base::from_raw([
-            0xc255_efd0_06b5_db1c,
-            0xb5d9_85dc_1630_a4b2,
-            0x9756_4e1b_5d1a_c72f,
-            0x2a2d_e13e_70f2_7e16,
-        ]),
-        vesta::Base::from_raw([
-            0xcffd_f529_3334_29fc,
-            0x21e3_af7e_f123_32cd,
-            0xfff5_40a8_7327_c7ce,
-            0x2c60_94d1_c6e1_caba,
-        ]),
-    ],
-];
-
-pub(crate) const MDS_INV: [[vesta::Base; 3]; 3] = [
-    [
-        vesta::Base::from_raw([
-            0xb204_ddc6_5e58_2044,
-            0x47a6_0484_b0a9_9c91,
-            0xcaf5_4d78_24c1_200e,
-            0x36df_4950_21cf_7828,
-        ]),
-        vesta::Base::from_raw([
-            0x6a6b_94ad_aa0d_9c9e,
-            0xe2cd_38b9_59d4_61ff,
-            0xe43e_c4bf_3e0d_f00c,
-            0x034f_beae_4650_c2c7,
-        ]),
-        vesta::Base::from_raw([
-            0xa862_7a02_8c1a_f7d6,
-            0x841b_ebf1_a15b_746e,
-            0x1fd5_6832_d0ab_5570,
-            0x20a8_64d6_790f_7c1c,
-        ]),
-    ],
-    [
-        vesta::Base::from_raw([
-            0x3470_d5c5_53bc_9d20,
-            0x1f95_660f_eb5d_b121,
-            0xdd31_97ac_c894_9076,
-            0x2d08_703d_48ec_d7dc,
-        ]),
-        vesta::Base::from_raw([
-            0x6b5b_42b0_67d8_30f3,
-            0x6169_b6fa_721a_470e,
-            0xeff3_18a2_8983_158a,
-            0x2db1_0ecd_507a_2f27,
-        ]),
-        vesta::Base::from_raw([
-            0xfbae_b537_d278_4760,
-            0x0068_e709_07e7_089d,
-            0x926a_5fc0_cc1e_f726,
-            0x0c8a_58c0_6473_cdfa,
-        ]),
-    ],
-    [
-        vesta::Base::from_raw([
-            0x3a5a_ca10_7129_6e61,
-            0x4ad4_442e_96c9_d5e8,
-            0x5432_f0c0_b908_a411,
-            0x2a64_2dca_695d_744d,
-        ]),
-        vesta::Base::from_raw([
-            0x1bd9_bfcb_be02_5ff1,
-            0x24f6_ad43_b703_ad90,
-            0xebb7_238d_f00d_17e7,
-            0x114e_c796_fb40_3f5f,
-        ]),
-        vesta::Base::from_raw([
-            0x67f0_642e_14a9_c3bf,
-            0xf6a6_9176_7069_7a97,
-            0x0408_110d_c66e_b147,
-            0x2825_e067_5968_dbeb,
         ]),
     ],
 ];
