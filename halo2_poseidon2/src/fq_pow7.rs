@@ -10,7 +10,6 @@ use pasta_curves::vesta;
 
 /// Internal MDS diagonal elements minus 1
 /// Used for efficient internal round computation: y_i = (M_ii - 1) * x_i + sum(x_j)
-#[allow(dead_code)]
 pub(crate) const MAT_DIAG3_M_1_POSEIDON2: [vesta::Base; 3] = [
     vesta::Base::from_raw([
         0x0000000000000001,
@@ -105,71 +104,6 @@ pub(crate) const MDS: [[vesta::Base; 3]; 3] = [
         ]),
     ],
 ];
-
-
-pub(crate) const MDS_INV: [[vesta::Base; 3]; 3] = [
-    [
-        vesta::Base::from_raw([
-            0x0000000000000003,
-            0x0000000000000000,
-            0x0000000000000000,
-            0x0000000000000000,
-        ]),
-        vesta::Base::from_raw([
-            0x8c46eb2100000000,
-            0x224698fc0994a8dd,
-            0x0000000000000000,
-            0x4000000000000000,
-        ]),
-        vesta::Base::from_raw([
-            0x8c46eb2100000000,
-            0x224698fc0994a8dd,
-            0x0000000000000000,
-            0x4000000000000000,
-        ]),
-    ],
-    [
-        vesta::Base::from_raw([
-            0x8c46eb2100000000,
-            0x224698fc0994a8dd,
-            0x0000000000000000,
-            0x4000000000000000,
-        ]),
-        vesta::Base::from_raw([
-            0x0000000000000003,
-            0x0000000000000000,
-            0x0000000000000000,
-            0x0000000000000000,
-        ]),
-        vesta::Base::from_raw([
-            0x8c46eb2100000000,
-            0x224698fc0994a8dd,
-            0x0000000000000000,
-            0x4000000000000000,
-        ]),
-    ],
-    [
-        vesta::Base::from_raw([
-            0x8c46eb2100000000,
-            0x224698fc0994a8dd,
-            0x0000000000000000,
-            0x4000000000000000,
-        ]),
-        vesta::Base::from_raw([
-            0x8c46eb2100000000,
-            0x224698fc0994a8dd,
-            0x0000000000000000,
-            0x4000000000000000,
-        ]),
-        vesta::Base::from_raw([
-            0x0000000000000003,
-            0x0000000000000000,
-            0x0000000000000000,
-            0x0000000000000000,
-        ]),
-    ],
-];
-
 
 // Number of round constants: 192
 // Round constants for GF(p):

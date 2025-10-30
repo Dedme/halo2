@@ -32,8 +32,8 @@ pub(crate) mod fq_pow7;
 pub mod test_vectors_7t3;
 
 mod p128pow7t3;
-pub use p128pow7t3::P128Pow7T3;
 use grain::SboxType;
+pub use p128pow7t3::P128Pow7T3;
 
 /// The type used to hold permutation state.
 pub type State<F, const T: usize> = [F; T];
@@ -64,17 +64,30 @@ pub trait Spec<F: Field, const T: usize, const RATE: usize>: fmt::Debug {
     /// hard-coding the constants, you may leave this unimplemented.
     fn secure_mds() -> usize;
 
-    /// Generates `(round_constants, mds, mds^-1)` corresponding to this specification.
-    fn constants() -> (Vec<[F; T]>, Mds<F, T>, Mds<F, T>);
+    /// Generates `(round_constants, mat_external, mat_internal, mat_internal_diag_m_1)`
+    /// corresponding to this specification.
+    ///
+    /// For Poseidon2:
+    /// - `mat_external`: Full MDS matrix used in external (full) rounds
+    /// - `mat_internal`: Circulant matrix used in internal (partial) rounds  
+    /// - `mat_internal_diag_m_1`: Diagonal elements minus 1 for optimized internal matrix multiplication
+    ///
+    /// For Poseidon v1 compatibility, `mat_internal` should equal `mat_external` and
+    /// `mat_internal_diag_m_1` should be all zeros.
+    fn constants() -> (Vec<[F; T]>, Mds<F, T>, Mds<F, T>, [F; T]);
 }
 
-/// Generates `(round_constants, mds, mds^-1)` corresponding to this specification.
+/// Generates `(round_constants, mat_external, mat_internal, mat_internal_diag_m_1)`
+/// corresponding to this specification.
+///
+/// This generates Poseidon v1 compatible constants where mat_internal == mat_external
+/// (full MDS for all rounds). For true Poseidon2, use externally generated constants.
 pub fn generate_constants<
     F: FromUniformBytes<64> + Ord,
     S: Spec<F, T, RATE>,
     const T: usize,
     const RATE: usize,
->() -> (Vec<[F; T]>, Mds<F, T>, Mds<F, T>) {
+>() -> (Vec<[F; T]>, Mds<F, T>, Mds<F, T>, [F; T]) {
     let r_f = S::full_rounds();
     let r_p = S::partial_rounds();
 
@@ -93,9 +106,12 @@ pub fn generate_constants<
         })
         .collect();
 
-    let (mds, mds_inv) = mds::generate_mds::<F, T>(&mut grain, S::secure_mds());
+    let (mds, _mds_inv) = mds::generate_mds::<F, T>(&mut grain, S::secure_mds());
 
-    (round_constants, mds, mds_inv)
+    // For Poseidon v1 compatibility: mat_internal = mat_external, diagonal elements = 0
+    let mat_internal_diag_m_1 = [F::ZERO; T];
+
+    (round_constants, mds, mds, mat_internal_diag_m_1)
 }
 
 /// Runs the Poseidon permutation on the given state.
@@ -104,64 +120,136 @@ pub fn generate_constants<
 #[cfg(feature = "test-dependencies")]
 pub fn test_only_permute<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>(
     state: &mut State<F, T>,
-    mds: &Mds<F, T>,
+    mat_external: &Mds<F, T>,
+    mat_internal: &Mds<F, T>,
+    mat_internal_diag_m_1: &[F; T],
     round_constants: &[[F; T]],
 ) {
-    permute::<F, S, T, RATE>(state, mds, round_constants);
+    permute::<F, S, T, RATE>(
+        state,
+        mat_external,
+        mat_internal,
+        mat_internal_diag_m_1,
+        round_constants,
+    );
 }
 
 /// Runs the Poseidon permutation on the given state.
-pub(crate) fn permute<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>(
+pub fn permute<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>(
     state: &mut State<F, T>,
-    mds: &Mds<F, T>,
+    mat_external: &Mds<F, T>,
+    mat_internal: &Mds<F, T>,
+    mat_internal_diag_m_1: &[F; T],
     round_constants: &[[F; T]],
 ) {
-    let r_f = S::full_rounds() / 2;
-    let r_p = S::partial_rounds();
+    debug_assert_eq!(
+        round_constants.len(),
+        S::full_rounds() + S::partial_rounds()
+    );
 
-    let apply_mds = |state: &mut State<F, T>| {
+    fn apply_matrix<F: Field, const T: usize>(state: &mut State<F, T>, matrix: &Mds<F, T>) {
         let mut new_state = [F::ZERO; T];
-        // Matrix multiplication
         #[allow(clippy::needless_range_loop)]
         for i in 0..T {
             for j in 0..T {
-                new_state[i] += mds[i][j] * state[j];
+                new_state[i] += matrix[i][j] * state[j];
             }
         }
         *state = new_state;
-    };
+    }
 
-    let full_round = |state: &mut State<F, T>, rcs: &[F; T]| {
-        for (word, rc) in state.iter_mut().zip(rcs.iter()) {
-            *word = S::sbox(*word + rc);
+    fn apply_internal_matrix<F: Field, const T: usize>(
+        state: &mut State<F, T>,
+        matrix: &Mds<F, T>,
+        diag_m_1: &[F; T],
+    ) {
+        if diag_m_1.iter().all(|coeff| bool::from(coeff.is_zero())) {
+            apply_matrix(state, matrix);
+            return;
         }
-        apply_mds(state);
-    };
 
-    let part_round = |state: &mut State<F, T>, rcs: &[F; T]| {
-        for (word, rc) in state.iter_mut().zip(rcs.iter()) {
-            *word += rc;
+        #[cfg(debug_assertions)]
+        {
+            for i in 0..T {
+                debug_assert_eq!(matrix[i][i], diag_m_1[i] + F::ONE);
+                for j in 0..T {
+                    if i != j {
+                        debug_assert_eq!(matrix[i][j], F::ONE);
+                    }
+                }
+            }
         }
-        // In a partial round, the S-box is only applied to the first state word.
-        state[0] = S::sbox(state[0]);
-        apply_mds(state);
+
+        let mut sum = F::ZERO;
+        for value in state.iter() {
+            sum += *value;
+        }
+
+        let mut new_state = [F::ZERO; T];
+        for (idx, word) in state.iter().enumerate() {
+            new_state[idx] = diag_m_1[idx] * *word + sum;
+        }
+
+        *state = new_state;
+    }
+
+    // Poseidon2 applies an external linear layer before any S-box evaluations.
+    apply_matrix(state, mat_external);
+
+    let mut round_idx = 0usize;
+    let half_full = S::full_rounds() / 2;
+    let partial_pairs = S::partial_rounds() / 2;
+
+    let apply_full_round = |state: &mut State<F, T>, round_constants: &[F; T]| {
+        for (word, rc) in state.iter_mut().zip(round_constants.iter()) {
+            *word = S::sbox(*word + *rc);
+        }
     };
 
-    iter::empty()
-        .chain(iter::repeat(&full_round as &dyn Fn(&mut State<F, T>, &[F; T])).take(r_f))
-        .chain(iter::repeat(&part_round as &dyn Fn(&mut State<F, T>, &[F; T])).take(r_p))
-        .chain(iter::repeat(&full_round as &dyn Fn(&mut State<F, T>, &[F; T])).take(r_f))
-        .zip(round_constants.iter())
-        .fold(state, |state, (round, rcs)| {
-            round(state, rcs);
-            state
-        });
+    // First half of the full rounds.
+    for _ in 0..half_full {
+        apply_full_round(state, &round_constants[round_idx]);
+        apply_matrix(state, mat_external);
+        round_idx += 1;
+    }
+
+    // Partial rounds are processed two at a time with the internal matrix.
+    for _ in 0..partial_pairs {
+        {
+            for (idx, word) in state.iter_mut().enumerate() {
+                *word += round_constants[round_idx][idx];
+            }
+            state[0] = S::sbox(state[0]);
+            apply_internal_matrix(state, mat_internal, mat_internal_diag_m_1);
+            round_idx += 1;
+        }
+
+        {
+            for (idx, word) in state.iter_mut().enumerate() {
+                *word += round_constants[round_idx][idx];
+            }
+            state[0] = S::sbox(state[0]);
+            apply_internal_matrix(state, mat_internal, mat_internal_diag_m_1);
+            round_idx += 1;
+        }
+    }
+
+    // Second half of the full rounds.
+    for _ in 0..half_full {
+        apply_full_round(state, &round_constants[round_idx]);
+        apply_matrix(state, mat_external);
+        round_idx += 1;
+    }
+
+    debug_assert_eq!(round_idx, round_constants.len());
 }
 
 fn poseidon_sponge<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>(
     state: &mut State<F, T>,
     input: Option<&Absorbing<F, RATE>>,
-    mds_matrix: &Mds<F, T>,
+    mat_external: &Mds<F, T>,
+    mat_internal: &Mds<F, T>,
+    mat_internal_diag_m_1: &[F; T],
     round_constants: &[[F; T]],
 ) -> Squeezing<F, RATE> {
     if let Some(Absorbing(input)) = input {
@@ -172,7 +260,13 @@ fn poseidon_sponge<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: us
         }
     }
 
-    permute::<F, S, T, RATE>(state, mds_matrix, round_constants);
+    permute::<F, S, T, RATE>(
+        state,
+        mat_external,
+        mat_internal,
+        mat_internal_diag_m_1,
+        round_constants,
+    );
 
     let mut output = [None; RATE];
     for (word, value) in output.iter_mut().zip(state.iter()) {
@@ -289,7 +383,9 @@ pub(crate) struct Sponge<
 > {
     mode: M,
     state: State<F, T>,
-    mds_matrix: Mds<F, T>,
+    mat_external: Mds<F, T>,
+    mat_internal: Mds<F, T>,
+    mat_internal_diag_m_1: [F; T],
     round_constants: Vec<[F; T]>,
     _marker: PhantomData<S>,
 }
@@ -299,7 +395,7 @@ impl<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
 {
     /// Constructs a new sponge for the given Poseidon specification.
     pub(crate) fn new(initial_capacity_element: F) -> Self {
-        let (round_constants, mds_matrix, _) = S::constants();
+        let (round_constants, mat_external, mat_internal, mat_internal_diag_m_1) = S::constants();
 
         let mode = Absorbing([None; RATE]);
         let mut state = [F::ZERO; T];
@@ -308,7 +404,9 @@ impl<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
         Sponge {
             mode,
             state,
-            mds_matrix,
+            mat_external,
+            mat_internal,
+            mat_internal_diag_m_1,
             round_constants,
             _marker: PhantomData::default(),
         }
@@ -327,7 +425,9 @@ impl<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
         let _ = poseidon_sponge::<F, S, T, RATE>(
             &mut self.state,
             Some(&self.mode),
-            &self.mds_matrix,
+            &self.mat_external,
+            &self.mat_internal,
+            &self.mat_internal_diag_m_1,
             &self.round_constants,
         );
         self.mode = Absorbing::init_with(value);
@@ -338,14 +438,18 @@ impl<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
         let mode = poseidon_sponge::<F, S, T, RATE>(
             &mut self.state,
             Some(&self.mode),
-            &self.mds_matrix,
+            &self.mat_external,
+            &self.mat_internal,
+            &self.mat_internal_diag_m_1,
             &self.round_constants,
         );
 
         Sponge {
             mode,
             state: self.state,
-            mds_matrix: self.mds_matrix,
+            mat_external: self.mat_external,
+            mat_internal: self.mat_internal,
+            mat_internal_diag_m_1: self.mat_internal_diag_m_1,
             round_constants: self.round_constants,
             _marker: PhantomData::default(),
         }
@@ -368,7 +472,9 @@ impl<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
             self.mode = poseidon_sponge::<F, S, T, RATE>(
                 &mut self.state,
                 None,
-                &self.mds_matrix,
+                &self.mat_external,
+                &self.mat_internal,
+                &self.mat_internal_diag_m_1,
                 &self.round_constants,
             );
         }
@@ -484,7 +590,8 @@ mod tests {
     fn orchard_spec_equivalence() {
         let message = [pallas::Base::from(6), pallas::Base::from(42)];
 
-        let (round_constants, mds, _) = OrchardNullifier::constants();
+        let (round_constants, mat_external, mat_internal, mat_internal_diag_m_1) =
+            OrchardNullifier::constants();
 
         let hasher = Hash::<_, OrchardNullifier, ConstantLength<2>, 3, 2>::init();
         let result = hasher.hash(message);
@@ -492,7 +599,13 @@ mod tests {
         // The result should be equivalent to just directly applying the permutation and
         // taking the first state element as the output.
         let mut state = [message[0], message[1], pallas::Base::from_u128(2 << 64)];
-        permute::<_, OrchardNullifier, 3, 2>(&mut state, &mds, &round_constants);
+        permute::<_, OrchardNullifier, 3, 2>(
+            &mut state,
+            &mat_external,
+            &mat_internal,
+            &mat_internal_diag_m_1,
+            &round_constants,
+        );
         assert_eq!(state[0], result);
     }
 }

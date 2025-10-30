@@ -23,6 +23,7 @@ pub struct Pow5Config<F: Field, const WIDTH: usize, const RATE: usize> {
     partial_sbox: Column<Advice>,
     rc_a: [Column<Fixed>; WIDTH],
     rc_b: [Column<Fixed>; WIDTH],
+    s_first: Selector,
     s_full: Selector,
     s_partial: Selector,
     s_pad_and_add: Selector,
@@ -31,7 +32,10 @@ pub struct Pow5Config<F: Field, const WIDTH: usize, const RATE: usize> {
     half_partial_rounds: usize,
     alpha: [u64; 4],
     round_constants: Vec<[F; WIDTH]>,
-    m_reg: Mds<F, WIDTH>,
+    mat_external: Mds<F, WIDTH>,
+    mat_internal: Mds<F, WIDTH>,
+    mat_internal_diag_m_1: [F; WIDTH],
+    use_internal_diag: bool,
 }
 
 /// A Poseidon chip using an $x^5$ S-Box.
@@ -67,7 +71,10 @@ impl<F: Field, const WIDTH: usize, const RATE: usize> Pow5Chip<F, WIDTH, RATE> {
         assert!(S::partial_rounds() & 1 == 0);
         let half_full_rounds = S::full_rounds() / 2;
         let half_partial_rounds = S::partial_rounds() / 2;
-        let (round_constants, m_reg, m_inv) = S::constants();
+        let (round_constants, mat_external, mat_internal, mat_internal_diag_m_1) = S::constants();
+        let use_internal_diag = mat_internal_diag_m_1
+            .iter()
+            .any(|coeff| !bool::from(coeff.is_zero()));
 
         // This allows state words to be initialized (by constraining them equal to fixed
         // values), and used in a permutation from an arbitrary region. rc_a is used in
@@ -81,6 +88,7 @@ impl<F: Field, const WIDTH: usize, const RATE: usize> Pow5Chip<F, WIDTH, RATE> {
             meta.enable_equality(column);
         }
 
+        let s_first = meta.selector();
         let s_full = meta.selector();
         let s_partial = meta.selector();
         let s_pad_and_add = meta.selector();
@@ -91,6 +99,34 @@ impl<F: Field, const WIDTH: usize, const RATE: usize> Pow5Chip<F, WIDTH, RATE> {
             v2.clone() * v2 * v
         };
 
+    let mat_external_first_layer = mat_external;
+        meta.create_gate("first layer", move |meta| {
+            let s_first = meta.query_selector(s_first);
+
+            let current: Vec<_> = (0..WIDTH)
+                .map(|idx| meta.query_advice(state[idx], Rotation::cur()))
+                .collect();
+            let next: Vec<_> = (0..WIDTH)
+                .map(|idx| meta.query_advice(state[idx], Rotation::next()))
+                .collect();
+
+            let constraints = (0..WIDTH)
+                .map(|row| {
+                    let linear = (0..WIDTH)
+                        .map(|col| {
+                            current[col].clone()
+                                * Expression::Constant(mat_external_first_layer[row][col])
+                        })
+                        .reduce(|acc, term| acc + term)
+                        .expect("WIDTH > 0");
+                    linear - next[row].clone()
+                })
+                .collect::<Vec<_>>();
+
+            Constraints::with_selector(s_first, constraints)
+        });
+
+    let mat_external_full_gate = mat_external;
         meta.create_gate("full round", |meta| {
             let s_full = meta.query_selector(s_full);
 
@@ -103,7 +139,8 @@ impl<F: Field, const WIDTH: usize, const RATE: usize> Pow5Chip<F, WIDTH, RATE> {
                             .map(|idx| {
                                 let state_cur = meta.query_advice(state[idx], Rotation::cur());
                                 let rc_a = meta.query_fixed(rc_a[idx]);
-                                pow_5(state_cur + rc_a) * m_reg[next_idx][idx]
+                                pow_5(state_cur + rc_a)
+                                    * Expression::Constant(mat_external_full_gate[next_idx][idx])
                             })
                             .reduce(|acc, term| acc + term)
                             .expect("WIDTH > 0");
@@ -113,50 +150,124 @@ impl<F: Field, const WIDTH: usize, const RATE: usize> Pow5Chip<F, WIDTH, RATE> {
             )
         });
 
-        meta.create_gate("partial rounds", |meta| {
-            let cur_0 = meta.query_advice(state[0], Rotation::cur());
-            let mid_0 = meta.query_advice(partial_sbox, Rotation::cur());
-
-            let rc_a0 = meta.query_fixed(rc_a[0]);
-            let rc_b0 = meta.query_fixed(rc_b[0]);
-
+    let mat_internal_partial_gate = mat_internal;
+    let mat_internal_diag_partial = mat_internal_diag_m_1;
+        let use_internal_diag_partial = use_internal_diag;
+        meta.create_gate("partial rounds", move |meta| {
             let s_partial = meta.query_selector(s_partial);
 
-            use halo2_proofs::plonk::VirtualCells;
-            let mid = |idx: usize, meta: &mut VirtualCells<F>| {
-                let mid = mid_0.clone() * m_reg[idx][0];
-                (1..WIDTH).fold(mid, |acc, cur_idx| {
-                    let cur = meta.query_advice(state[cur_idx], Rotation::cur());
-                    let rc_a = meta.query_fixed(rc_a[cur_idx]);
-                    acc + (cur + rc_a) * m_reg[idx][cur_idx]
+            let current: Vec<_> = (0..WIDTH)
+                .map(|idx| meta.query_advice(state[idx], Rotation::cur()))
+                .collect();
+            let next: Vec<_> = (0..WIDTH)
+                .map(|idx| meta.query_advice(state[idx], Rotation::next()))
+                .collect();
+            let rc_a_expr: Vec<_> = (0..WIDTH).map(|idx| meta.query_fixed(rc_a[idx])).collect();
+            let rc_b_expr: Vec<_> = (0..WIDTH).map(|idx| meta.query_fixed(rc_b[idx])).collect();
+            let sbox_a = meta.query_advice(partial_sbox, Rotation::cur());
+
+            let mut constraints = Vec::with_capacity(WIDTH + 1);
+
+            // Enforce the first S-box output that we store in partial_sbox.
+            let first_inputs: Vec<_> = (0..WIDTH)
+                .map(|idx| current[idx].clone() + rc_a_expr[idx].clone())
+                .collect();
+            constraints.push(pow_5(first_inputs[0].clone()) - sbox_a.clone());
+
+            let first_values: Vec<_> = first_inputs
+                .iter()
+                .enumerate()
+                .map(|(idx, expr)| {
+                    if idx == 0 {
+                        sbox_a.clone()
+                    } else {
+                        expr.clone()
+                    }
                 })
-            };
+                .collect();
 
-            let next = |idx: usize, meta: &mut VirtualCells<F>| {
-                (0..WIDTH)
-                    .map(|next_idx| {
-                        let next = meta.query_advice(state[next_idx], Rotation::next());
-                        next * m_inv[idx][next_idx]
+            let sum_first = first_values
+                .iter()
+                .cloned()
+                .reduce(|acc, expr| acc + expr)
+                .expect("WIDTH > 0");
+
+            // Apply internal matrix after first partial round.
+            let mid_values: Vec<_> = if use_internal_diag_partial {
+                first_values
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, value)| {
+                        Expression::Constant(mat_internal_diag_partial[idx]) * value.clone()
+                            + sum_first.clone()
                     })
-                    .reduce(|acc, next| acc + next)
-                    .expect("WIDTH > 0")
+                    .collect()
+            } else {
+                (0..WIDTH)
+                    .map(|row| {
+                        (0..WIDTH)
+                            .map(|col| {
+                                let term_input = if col == 0 {
+                                    sbox_a.clone()
+                                } else {
+                                    first_inputs[col].clone()
+                                };
+                                term_input
+                                    * Expression::Constant(mat_internal_partial_gate[row][col])
+                            })
+                            .reduce(|acc, term| acc + term)
+                            .expect("WIDTH > 0")
+                    })
+                    .collect()
             };
 
-            let partial_round_linear = |idx: usize, meta: &mut VirtualCells<F>| {
-                let rc_b = meta.query_fixed(rc_b[idx]);
-                mid(idx, meta) + rc_b - next(idx, meta)
-            };
+            // Apply second round constants and S-box on the first element.
+            let post_rc_values: Vec<_> = mid_values
+                .iter()
+                .enumerate()
+                .map(|(idx, mid)| mid.clone() + rc_b_expr[idx].clone())
+                .collect();
 
-            Constraints::with_selector(
-                s_partial,
-                std::iter::empty()
-                    // state[0] round a
-                    .chain(Some(pow_5(cur_0 + rc_a0) - mid_0.clone()))
-                    // state[0] round b
-                    .chain(Some(pow_5(mid(0, meta) + rc_b0) - next(0, meta)))
-                    .chain((1..WIDTH).map(|idx| partial_round_linear(idx, meta)))
-                    .collect::<Vec<_>>(),
-            )
+            let second_values: Vec<_> = post_rc_values
+                .iter()
+                .enumerate()
+                .map(|(idx, expr)| {
+                    if idx == 0 {
+                        pow_5(expr.clone())
+                    } else {
+                        expr.clone()
+                    }
+                })
+                .collect();
+
+            let sum_second = second_values
+                .iter()
+                .cloned()
+                .reduce(|acc, expr| acc + expr)
+                .expect("WIDTH > 0");
+
+            // Final internal matrix multiplication must equal the next row state.
+            if use_internal_diag_partial {
+                constraints.extend((0..WIDTH).map(|row| {
+                    Expression::Constant(mat_internal_diag_partial[row])
+                        * second_values[row].clone()
+                        + sum_second.clone()
+                        - next[row].clone()
+                }));
+            } else {
+                constraints.extend((0..WIDTH).map(|row| {
+                    let linear = (0..WIDTH)
+                        .map(|col| {
+                            second_values[col].clone()
+                                * Expression::Constant(mat_internal_partial_gate[row][col])
+                        })
+                        .reduce(|acc, term| acc + term)
+                        .expect("WIDTH > 0");
+                    linear - next[row].clone()
+                }));
+            }
+
+            Constraints::with_selector(s_partial, constraints)
         });
 
         meta.create_gate("pad-and-add", |meta| {
@@ -190,6 +301,7 @@ impl<F: Field, const WIDTH: usize, const RATE: usize> Pow5Chip<F, WIDTH, RATE> {
             partial_sbox,
             rc_a,
             rc_b,
+            s_first,
             s_full,
             s_partial,
             s_pad_and_add,
@@ -197,7 +309,10 @@ impl<F: Field, const WIDTH: usize, const RATE: usize> Pow5Chip<F, WIDTH, RATE> {
             half_partial_rounds,
             alpha,
             round_constants,
-            m_reg,
+            mat_external,
+            mat_internal,
+            mat_internal_diag_m_1,
+            use_internal_diag,
         }
     }
 
@@ -236,33 +351,32 @@ impl<F: Field, S: Spec<F, WIDTH, RATE>, const WIDTH: usize, const RATE: usize>
             || "permute state",
             |mut region| {
                 // Load the initial state into this region.
-                let state = Pow5State::load(&mut region, config, initial_state)?;
+                let mut state = Pow5State::load(&mut region, config, initial_state)?;
+                let mut row_offset = 0usize;
 
-                let state = (0..config.half_full_rounds).fold(Ok(state), |res, r| {
-                    res.and_then(|state| state.full_round(&mut region, config, r, r))
-                })?;
+                // Poseidon2 applies an external linear layer before any S-boxes.
+                state = state.first_layer(&mut region, config, row_offset)?;
+                row_offset += 1;
 
-                let state = (0..config.half_partial_rounds).fold(Ok(state), |res, r| {
-                    res.and_then(|state| {
-                        state.partial_round(
-                            &mut region,
-                            config,
-                            config.half_full_rounds + 2 * r,
-                            config.half_full_rounds + r,
-                        )
-                    })
-                })?;
+                // First half of the full rounds.
+                for round in 0..config.half_full_rounds {
+                    state = state.full_round(&mut region, config, round, row_offset)?;
+                    row_offset += 1;
+                }
 
-                let state = (0..config.half_full_rounds).fold(Ok(state), |res, r| {
-                    res.and_then(|state| {
-                        state.full_round(
-                            &mut region,
-                            config,
-                            config.half_full_rounds + 2 * config.half_partial_rounds + r,
-                            config.half_full_rounds + config.half_partial_rounds + r,
-                        )
-                    })
-                })?;
+                // Partial rounds (processed two at a time inside partial_round).
+                for i in 0..config.half_partial_rounds {
+                    let round = config.half_full_rounds + 2 * i;
+                    state = state.partial_round(&mut region, config, round, row_offset)?;
+                    row_offset += 1;
+                }
+
+                // Final half of the full rounds.
+                for i in 0..config.half_full_rounds {
+                    let round = config.half_full_rounds + 2 * config.half_partial_rounds + i;
+                    state = state.full_round(&mut region, config, round, row_offset)?;
+                    row_offset += 1;
+                }
 
                 Ok(state.0)
             },
@@ -435,6 +549,44 @@ impl<F: Field> Var<F> for StateWord<F> {
 struct Pow5State<F: Field, const WIDTH: usize>([StateWord<F>; WIDTH]);
 
 impl<F: Field, const WIDTH: usize> Pow5State<F, WIDTH> {
+    fn first_layer<const RATE: usize>(
+        self,
+        region: &mut Region<F>,
+        config: &Pow5Config<F, WIDTH, RATE>,
+        offset: usize,
+    ) -> Result<Self, Error> {
+        config.s_first.enable(region, offset)?;
+
+        let current: Value<Vec<F>> = self.0.iter().map(|word| word.0.value().cloned()).collect();
+
+        let next_values: Value<Vec<F>> = current.map(|values| {
+            config
+                .mat_external
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .zip(values.iter())
+                        .fold(F::ZERO, |acc, (coeff, val)| acc + *coeff * *val)
+                })
+                .collect()
+        });
+
+        let next_state: Result<Vec<_>, Error> = (0..WIDTH)
+            .map(|idx| {
+                let value = next_values.as_ref().map(|vals| vals[idx]);
+                let var = region.assign_advice(
+                    || format!("first_layer state_{}", idx),
+                    config.state[idx],
+                    offset + 1,
+                    || value,
+                )?;
+                Ok(StateWord(var))
+            })
+            .collect();
+
+        next_state.map(|state| Pow5State(state.try_into().unwrap()))
+    }
+
     fn full_round<const RATE: usize>(
         self,
         region: &mut Region<F>,
@@ -449,7 +601,7 @@ impl<F: Field, const WIDTH: usize> Pow5State<F, WIDTH> {
                     .map(|v| *v + config.round_constants[round][idx])
             });
             let r: Value<Vec<F>> = q.map(|q| q.map(|q| q.pow(&config.alpha))).collect();
-            let m = &config.m_reg;
+            let m = &config.mat_external;
             let state = m.iter().map(|m_i| {
                 r.as_ref().map(|r| {
                     r.iter()
@@ -470,70 +622,89 @@ impl<F: Field, const WIDTH: usize> Pow5State<F, WIDTH> {
         offset: usize,
     ) -> Result<Self, Error> {
         Self::round(region, config, round, offset, config.s_partial, |region| {
-            let m = &config.m_reg;
-            let p: Value<Vec<_>> = self.0.iter().map(|word| word.0.value().cloned()).collect();
+            let current: Value<Vec<F>> =
+                self.0.iter().map(|word| word.0.value().cloned()).collect();
 
-            let r: Value<Vec<_>> = p.map(|p| {
-                let r_0 = (p[0] + config.round_constants[round][0]).pow(&config.alpha);
-                let r_i = p[1..]
+            let after_first_round: Value<Vec<F>> = current.map(|values| {
+                values
                     .iter()
                     .enumerate()
-                    .map(|(i, p_i)| *p_i + config.round_constants[round][i + 1]);
-                std::iter::empty().chain(Some(r_0)).chain(r_i).collect()
+                    .map(|(idx, value)| {
+                        let mut updated = *value + config.round_constants[round][idx];
+                        if idx == 0 {
+                            updated = updated.pow(&config.alpha);
+                        }
+                        updated
+                    })
+                    .collect()
             });
 
             region.assign_advice(
                 || format!("round_{} partial_sbox", round),
                 config.partial_sbox,
                 offset,
-                || r.as_ref().map(|r| r[0]),
+                || after_first_round.as_ref().map(|vals| vals[0]),
             )?;
 
-            let p_mid: Value<Vec<_>> = m
-                .iter()
-                .map(|m_i| {
-                    r.as_ref().map(|r| {
-                        m_i.iter()
-                            .zip(r.iter())
-                            .fold(F::ZERO, |acc, (m_ij, r_j)| acc + *m_ij * r_j)
-                    })
-                })
-                .collect();
+            let apply_internal_linear = |values: &[F]| -> Vec<F> {
+                if config.use_internal_diag {
+                    let sum = values.iter().fold(F::ZERO, |acc, val| acc + *val);
+                    values
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, value)| config.mat_internal_diag_m_1[idx] * *value + sum)
+                        .collect()
+                } else {
+                    config
+                        .mat_internal
+                        .iter()
+                        .map(|row| {
+                            row.iter()
+                                .zip(values.iter())
+                                .fold(F::ZERO, |acc, (coeff, val)| acc + *coeff * *val)
+                        })
+                        .collect()
+                }
+            };
 
-            // Load the second round constants.
-            let mut load_round_constant = |i: usize| {
+            let after_first_linear: Value<Vec<F>> =
+                after_first_round.map(|values| apply_internal_linear(&values));
+
+            for i in 0..WIDTH {
                 region.assign_fixed(
                     || format!("round_{} rc_{}", round + 1, i),
                     config.rc_b[i],
                     offset,
                     || Value::known(config.round_constants[round + 1][i]),
-                )
-            };
-            for i in 0..WIDTH {
-                load_round_constant(i)?;
+                )?;
             }
 
-            let r_mid: Value<Vec<_>> = p_mid.map(|p| {
-                let r_0 = (p[0] + config.round_constants[round + 1][0]).pow(&config.alpha);
-                let r_i = p[1..]
+            let after_second_round: Value<Vec<F>> = after_first_linear.map(|values| {
+                values
                     .iter()
                     .enumerate()
-                    .map(|(i, p_i)| *p_i + config.round_constants[round + 1][i + 1]);
-                std::iter::empty().chain(Some(r_0)).chain(r_i).collect()
+                    .map(|(idx, value)| {
+                        let mut updated = *value + config.round_constants[round + 1][idx];
+                        if idx == 0 {
+                            updated = updated.pow(&config.alpha);
+                        }
+                        updated
+                    })
+                    .collect()
             });
 
-            let state: Vec<Value<_>> = m
-                .iter()
-                .map(|m_i| {
-                    r_mid.as_ref().map(|r| {
-                        m_i.iter()
-                            .zip(r.iter())
-                            .fold(F::ZERO, |acc, (m_ij, r_j)| acc + *m_ij * r_j)
-                    })
-                })
+            let after_second_linear: Value<Vec<F>> =
+                after_second_round.map(|values| apply_internal_linear(&values));
+
+            let next_state_vec: Vec<Value<F>> = (0..WIDTH)
+                .map(|row| after_second_linear.as_ref().map(|values| values[row]))
                 .collect();
 
-            Ok((round + 2, state.try_into().unwrap()))
+            let next_state: [Value<F>; WIDTH] = next_state_vec
+                .try_into()
+                .expect("next state vector has expected width");
+
+            Ok((round + 2, next_state))
         })
     }
 
@@ -618,6 +789,72 @@ mod tests {
     use std::convert::TryInto;
     use std::marker::PhantomData;
 
+    fn apply_matrix<F: Field, const WIDTH: usize>(
+        mat: &[[F; WIDTH]; WIDTH],
+        state: &mut [F; WIDTH],
+    ) {
+        let mut new_state = [F::ZERO; WIDTH];
+        for (row_idx, mat_row) in mat.iter().enumerate() {
+            let mut acc = F::ZERO;
+            for (col_idx, value) in state.iter().enumerate() {
+                acc += mat_row[col_idx] * *value;
+            }
+            new_state[row_idx] = acc;
+        }
+        *state = new_state;
+    }
+
+    fn poseidon2_reference<
+        F: Field,
+        S: Spec<F, WIDTH, RATE>,
+        const WIDTH: usize,
+        const RATE: usize,
+    >(
+        state: &mut [F; WIDTH],
+    ) {
+        let (round_constants, mat_external, mat_internal, _) = S::constants();
+
+        apply_matrix(&mat_external, state);
+
+        let mut round = 0;
+        let half_full = S::full_rounds() / 2;
+        let partial_pairs = S::partial_rounds() / 2;
+
+        for _ in 0..half_full {
+            for (word, rc) in state.iter_mut().zip(round_constants[round].iter()) {
+                *word = S::sbox(*word + *rc);
+            }
+            apply_matrix(&mat_external, state);
+            round += 1;
+        }
+
+        for _ in 0..partial_pairs {
+            for (word, rc) in state.iter_mut().zip(round_constants[round].iter()) {
+                *word += *rc;
+            }
+            state[0] = S::sbox(state[0]);
+            apply_matrix(&mat_internal, state);
+            round += 1;
+
+            for (word, rc) in state.iter_mut().zip(round_constants[round].iter()) {
+                *word += *rc;
+            }
+            state[0] = S::sbox(state[0]);
+            apply_matrix(&mat_internal, state);
+            round += 1;
+        }
+
+        for _ in 0..half_full {
+            for (word, rc) in state.iter_mut().zip(round_constants[round].iter()) {
+                *word = S::sbox(*word + *rc);
+            }
+            apply_matrix(&mat_external, state);
+            round += 1;
+        }
+
+        assert_eq!(round, round_constants.len());
+    }
+
     struct MyPermuteCircuit<S: Spec<Fp, WIDTH, RATE>, const WIDTH: usize, const RATE: usize>(
         PhantomData<S>,
     );
@@ -686,12 +923,7 @@ mod tests {
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap();
-            let (round_constants, mds, _) = S::constants();
-            poseidon::test_only_permute::<_, S, WIDTH, RATE>(
-                &mut expected_final_state,
-                &mds,
-                &round_constants,
-            );
+            poseidon2_reference::<Fp, S, WIDTH, RATE>(&mut expected_final_state);
 
             layouter.assign_region(
                 || "constrain final state",

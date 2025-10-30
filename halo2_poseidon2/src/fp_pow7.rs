@@ -10,7 +10,6 @@ use pasta_curves::pallas;
 
 /// Internal MDS diagonal elements minus 1
 /// Used for efficient internal round computation: y_i = (M_ii - 1) * x_i + sum(x_j)
-#[allow(dead_code)]
 pub(crate) const MAT_DIAG3_M_1_POSEIDON2: [pallas::Base; 3] = [
     pallas::Base::from_raw([
         0x0000000000000001,
@@ -97,69 +96,6 @@ pub(crate) const MDS: [[pallas::Base; 3]; 3] = [
             0x0000000000000000,
             0x0000000000000000,
             0x0000000000000000,
-        ]),
-        pallas::Base::from_raw([
-            0x0000000000000003,
-            0x0000000000000000,
-            0x0000000000000000,
-            0x0000000000000000,
-        ]),
-    ],
-];
-
-pub(crate) const MDS_INV: [[pallas::Base; 3]; 3] = [
-    [
-        pallas::Base::from_raw([
-            0x0000000000000003,
-            0x0000000000000000,
-            0x0000000000000000,
-            0x0000000000000000,
-        ]),
-        pallas::Base::from_raw([
-            0x992d30ed00000000,
-            0x224698fc094cf91b,
-            0x0000000000000000,
-            0x4000000000000000,
-        ]),
-        pallas::Base::from_raw([
-            0x992d30ed00000000,
-            0x224698fc094cf91b,
-            0x0000000000000000,
-            0x4000000000000000,
-        ]),
-    ],
-    [
-        pallas::Base::from_raw([
-            0x992d30ed00000000,
-            0x224698fc094cf91b,
-            0x0000000000000000,
-            0x4000000000000000,
-        ]),
-        pallas::Base::from_raw([
-            0x0000000000000003,
-            0x0000000000000000,
-            0x0000000000000000,
-            0x0000000000000000,
-        ]),
-        pallas::Base::from_raw([
-            0x992d30ed00000000,
-            0x224698fc094cf91b,
-            0x0000000000000000,
-            0x4000000000000000,
-        ]),
-    ],
-    [
-        pallas::Base::from_raw([
-            0x992d30ed00000000,
-            0x224698fc094cf91b,
-            0x0000000000000000,
-            0x4000000000000000,
-        ]),
-        pallas::Base::from_raw([
-            0x992d30ed00000000,
-            0x224698fc094cf91b,
-            0x0000000000000000,
-            0x4000000000000000,
         ]),
         pallas::Base::from_raw([
             0x0000000000000003,

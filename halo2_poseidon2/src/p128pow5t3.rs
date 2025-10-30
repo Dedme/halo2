@@ -15,7 +15,7 @@ use super::{Mds, Spec};
 pub struct P128Pow5T3;
 
 impl Spec<Fp, 3, 2> for P128Pow5T3 {
-     fn full_rounds() -> usize {
+    fn full_rounds() -> usize {
         8
     }
 
@@ -32,11 +32,12 @@ impl Spec<Fp, 3, 2> for P128Pow5T3 {
         unimplemented!("Poseidon2 uses pre-generated constants")
     }
 
-    fn constants() -> (Vec<[Fp; 3]>, Mds<Fp, 3>, Mds<Fp, 3>) {
+    fn constants() -> (Vec<[Fp; 3]>, Mds<Fp, 3>, Mds<Fp, 3>, [Fp; 3]) {
         (
             super::fp::ROUND_CONSTANTS[..].to_vec(),
-            super::fp::MDS,
-            super::fp::MDS_INV,
+            super::fp::MDS,                     // mat_external
+            super::fp::MDS, // mat_internal (Poseidon v1 compat - same as external)
+            super::fp::MAT_DIAG3_M_1_POSEIDON2, // diagonal elements minus 1
         )
     }
 }
@@ -58,11 +59,12 @@ impl Spec<Fq, 3, 2> for P128Pow5T3 {
         unimplemented!()
     }
 
-    fn constants() -> (Vec<[Fq; 3]>, Mds<Fq, 3>, Mds<Fq, 3>) {
+    fn constants() -> (Vec<[Fq; 3]>, Mds<Fq, 3>, Mds<Fq, 3>, [Fq; 3]) {
         (
             super::fq::ROUND_CONSTANTS[..].to_vec(),
-            super::fq::MDS,
-            super::fq::MDS_INV,
+            super::fq::MDS,                     // mat_external
+            super::fq::MDS, // mat_internal (Poseidon v1 compat - same as external)
+            super::fq::MAT_DIAG3_M_1_POSEIDON2, // diagonal elements minus 1
         )
     }
 }
@@ -77,10 +79,8 @@ mod tests {
         // Verify Poseidon2 produces consistent results for Pallas field
         let inputs = [Fp::from(1), Fp::from(2)];
 
-        let hash1 =
-            PoseidonHash::<Fp, P128Pow5T3, ConstantLength<2>, 3, 2>::init().hash(inputs);
-        let hash2 =
-            PoseidonHash::<Fp, P128Pow5T3, ConstantLength<2>, 3, 2>::init().hash(inputs);
+        let hash1 = PoseidonHash::<Fp, P128Pow5T3, ConstantLength<2>, 3, 2>::init().hash(inputs);
+        let hash2 = PoseidonHash::<Fp, P128Pow5T3, ConstantLength<2>, 3, 2>::init().hash(inputs);
 
         assert_eq!(hash1, hash2, "Poseidon2 must be deterministic");
         assert_ne!(hash1, Fp::zero(), "Hash should not be zero");
@@ -91,10 +91,8 @@ mod tests {
         // Verify Poseidon2 produces consistent results for Vesta field
         let inputs = [Fq::from(1), Fq::from(2)];
 
-        let hash1 =
-            PoseidonHash::<Fq, P128Pow5T3, ConstantLength<2>, 3, 2>::init().hash(inputs);
-        let hash2 =
-            PoseidonHash::<Fq, P128Pow5T3, ConstantLength<2>, 3, 2>::init().hash(inputs);
+        let hash1 = PoseidonHash::<Fq, P128Pow5T3, ConstantLength<2>, 3, 2>::init().hash(inputs);
+        let hash2 = PoseidonHash::<Fq, P128Pow5T3, ConstantLength<2>, 3, 2>::init().hash(inputs);
 
         assert_eq!(hash1, hash2, "Poseidon2 must be deterministic");
         assert_ne!(hash1, Fq::zero(), "Hash should not be zero");
@@ -106,10 +104,8 @@ mod tests {
         let inputs1 = [Fp::from(1), Fp::from(2)];
         let inputs2 = [Fp::from(2), Fp::from(1)];
 
-        let hash1 =
-            PoseidonHash::<Fp, P128Pow5T3, ConstantLength<2>, 3, 2>::init().hash(inputs1);
-        let hash2 =
-            PoseidonHash::<Fp, P128Pow5T3, ConstantLength<2>, 3, 2>::init().hash(inputs2);
+        let hash1 = PoseidonHash::<Fp, P128Pow5T3, ConstantLength<2>, 3, 2>::init().hash(inputs1);
+        let hash2 = PoseidonHash::<Fp, P128Pow5T3, ConstantLength<2>, 3, 2>::init().hash(inputs2);
 
         assert_ne!(
             hash1, hash2,
@@ -122,8 +118,7 @@ mod tests {
         // Verify hashing zero inputs produces non-zero result
         let inputs = [Fp::zero(), Fp::zero()];
 
-        let hash =
-            PoseidonHash::<Fp, P128Pow5T3, ConstantLength<2>, 3, 2>::init().hash(inputs);
+        let hash = PoseidonHash::<Fp, P128Pow5T3, ConstantLength<2>, 3, 2>::init().hash(inputs);
 
         assert_ne!(hash, Fp::zero(), "Hash of zero inputs should not be zero");
     }

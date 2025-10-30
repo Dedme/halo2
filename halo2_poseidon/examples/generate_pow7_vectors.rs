@@ -24,12 +24,7 @@ fn main() {
 }
 
 fn print_fp_module() {
-    const PERMUTE_INPUTS: [[u64; 3]; 4] = [
-        [0, 1, 2],
-        [3, 4, 5],
-        [7, 8, 9],
-        [11, 13, 17],
-    ];
+    const PERMUTE_INPUTS: [[u64; 3]; 4] = [[0, 1, 2], [3, 4, 5], [7, 8, 9], [11, 13, 17]];
 
     const HASH_INPUTS: [[u64; 2]; 4] = [[0, 0], [1, 2], [5, 8], [13, 21]];
 
@@ -49,13 +44,13 @@ fn print_fp_module() {
             initial_bytes[idx] = to_bytes(*value);
         }
 
-    test_only_permute::<Fp, P128Pow7T3, 3, 2>(&mut state, &mds, &round_constants);
+        test_only_permute::<Fp, P128Pow7T3, 3, 2>(&mut state, &mds, &round_constants);
         let mut final_bytes = [[0u8; 32]; 3];
         for (idx, value) in state.iter().enumerate() {
             final_bytes[idx] = to_bytes(*value);
         }
 
-    println!("            TestVector {{");
+        println!("            TestVector {{");
         println!("                initial_state: [");
         for element in &initial_bytes {
             println!("                    [");
@@ -69,8 +64,8 @@ fn print_fp_module() {
             print_byte_lines(24, element);
             println!("                    ],");
         }
-    println!("                ],");
-    println!("            }},");
+        println!("                ],");
+        println!("            }},");
     }
 
     println!("        ]");
@@ -90,7 +85,7 @@ fn print_fp_module() {
         let output = Hash::<Fp, P128Pow7T3, ConstantLength<2>, 3, 2>::init().hash(message);
         let output_bytes = to_bytes(output);
 
-    println!("            TestVector {{");
+        println!("            TestVector {{");
         println!("                input: [");
         for element in &message_bytes {
             println!("                    [");
@@ -98,10 +93,10 @@ fn print_fp_module() {
             println!("                    ],");
         }
         println!("                ],");
-    println!("                output: [");
+        println!("                output: [");
         print_byte_lines(20, &output_bytes);
-    println!("                ],");
-    println!("            }},");
+        println!("                ],");
+        println!("            }},");
     }
 
     println!("        ]");
@@ -110,12 +105,7 @@ fn print_fp_module() {
 }
 
 fn print_fq_module() {
-    const PERMUTE_INPUTS: [[u64; 3]; 4] = [
-        [0, 1, 2],
-        [5, 7, 11],
-        [13, 17, 19],
-        [23, 29, 31],
-    ];
+    const PERMUTE_INPUTS: [[u64; 3]; 4] = [[0, 1, 2], [5, 7, 11], [13, 17, 19], [23, 29, 31]];
 
     const HASH_INPUTS: [[u64; 2]; 4] = [[0, 0], [2, 3], [7, 13], [17, 23]];
 
@@ -136,13 +126,13 @@ fn print_fq_module() {
             initial_bytes[idx] = to_bytes(*value);
         }
 
-    test_only_permute::<Fq, P128Pow7T3, 3, 2>(&mut state, &mds, &round_constants);
+        test_only_permute::<Fq, P128Pow7T3, 3, 2>(&mut state, &mds, &round_constants);
         let mut final_bytes = [[0u8; 32]; 3];
         for (idx, value) in state.iter().enumerate() {
             final_bytes[idx] = to_bytes(*value);
         }
 
-    println!("            TestVector {{");
+        println!("            TestVector {{");
         println!("                initial_state: [");
         for element in &initial_bytes {
             println!("                    [");
@@ -156,8 +146,8 @@ fn print_fq_module() {
             print_byte_lines(24, element);
             println!("                    ],");
         }
-    println!("                ],");
-    println!("            }},");
+        println!("                ],");
+        println!("            }},");
     }
 
     println!("        ]");
@@ -177,7 +167,7 @@ fn print_fq_module() {
         let output = Hash::<Fq, P128Pow7T3, ConstantLength<2>, 3, 2>::init().hash(message);
         let output_bytes = to_bytes(output);
 
-    println!("            TestVector {{");
+        println!("            TestVector {{");
         println!("                input: [");
         for element in &message_bytes {
             println!("                    [");
@@ -185,10 +175,10 @@ fn print_fq_module() {
             println!("                    ],");
         }
         println!("                ],");
-    println!("                output: [");
+        println!("                output: [");
         print_byte_lines(20, &output_bytes);
-    println!("                ],");
-    println!("            }},");
+        println!("                ],");
+        println!("            }},");
     }
 
     println!("        ]");

@@ -884,11 +884,12 @@ mod tests {
                 .hash(message);
 
             let k = 6;
-            let circuit: MyHashCircuit<OrchardNullifier, 3, 2, 2> = MyHashCircuit::<OrchardNullifier, 3, 2, 2> {
-                message: Value::known(message),
-                output: Value::known(output),
-                _spec: PhantomData,
-            };
+            let circuit: MyHashCircuit<OrchardNullifier, 3, 2, 2> =
+                MyHashCircuit::<OrchardNullifier, 3, 2, 2> {
+                    message: Value::known(message),
+                    output: Value::known(output),
+                    _spec: PhantomData,
+                };
             let prover = MockProver::run(k, &circuit, vec![]).unwrap();
             assert_eq!(prover.verify(), Ok(()));
         }

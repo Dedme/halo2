@@ -146,7 +146,6 @@ pub(crate) const MDS_INV: [[pallas::Base; 3]; 3] = [
     ],
 ];
 
-
 pub(crate) const ROUND_CONSTANTS: [[pallas::Base; 3]; 56] = [
     [
         pallas::Base::from_raw([

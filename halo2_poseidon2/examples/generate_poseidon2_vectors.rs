@@ -1,9 +1,5 @@
 use ff::PrimeField;
-use halo2_poseidon2::{
-    permute,
-    primitives::{ConstantLength, Hash},
-    p128pow5t3::P128Pow5T3,
-};
+use halo2_poseidon2::{ConstantLength, Hash, P128Pow5T3, Spec, permute};
 use pasta_curves::{pallas::Base as Fp, vesta::Base as Fq};
 
 fn main() {
@@ -28,16 +24,12 @@ fn main() {
 }
 
 fn print_fp_module() {
-    const PERMUTE_INPUTS: [[u64; 3]; 4] = [
-        [0, 1, 2],
-        [5, 8, 13],
-        [21, 34, 55],
-        [89, 144, 233],
-    ];
+    const PERMUTE_INPUTS: [[u64; 3]; 4] = [[0, 1, 2], [5, 8, 13], [21, 34, 55], [89, 144, 233]];
 
     const HASH_INPUTS: [[u64; 2]; 4] = [[0, 0], [1, 2], [3, 5], [8, 13]];
 
-    let (round_constants, mds, _) = P128Pow5T3::constants();
+    let (round_constants, mat_external, mat_internal, mat_internal_diag_m_1) =
+        P128Pow5T3::constants();
 
     println!("pub mod fp {{");
     println!("    use super::*;");
@@ -53,7 +45,13 @@ fn print_fp_module() {
             initial_bytes[idx] = to_bytes(*value);
         }
 
-        permute::<Fp, P128Pow5T3, 3, 2>(&mut state, &mds, &round_constants);
+        permute::<Fp, P128Pow5T3, 3, 2>(
+            &mut state,
+            &mat_external,
+            &mat_internal,
+            &mat_internal_diag_m_1,
+            &round_constants,
+        );
         let mut final_bytes = [[0u8; 32]; 3];
         for (idx, value) in state.iter().enumerate() {
             final_bytes[idx] = to_bytes(*value);
@@ -114,16 +112,12 @@ fn print_fp_module() {
 }
 
 fn print_fq_module() {
-    const PERMUTE_INPUTS: [[u64; 3]; 4] = [
-        [0, 1, 2],
-        [3, 5, 7],
-        [11, 13, 17],
-        [19, 23, 29],
-    ];
+    const PERMUTE_INPUTS: [[u64; 3]; 4] = [[0, 1, 2], [3, 5, 7], [11, 13, 17], [19, 23, 29]];
 
     const HASH_INPUTS: [[u64; 2]; 4] = [[0, 0], [2, 3], [5, 7], [11, 13]];
 
-    let (round_constants, mds, _) = P128Pow5T3::constants();
+    let (round_constants, mat_external, mat_internal, mat_internal_diag_m_1) =
+        P128Pow5T3::constants();
 
     println!();
     println!("pub mod fq {{");
@@ -140,7 +134,13 @@ fn print_fq_module() {
             initial_bytes[idx] = to_bytes(*value);
         }
 
-        permute::<Fq, P128Pow5T3, 3, 2>(&mut state, &mds, &round_constants);
+        permute::<Fq, P128Pow5T3, 3, 2>(
+            &mut state,
+            &mat_external,
+            &mat_internal,
+            &mat_internal_diag_m_1,
+            &round_constants,
+        );
         let mut final_bytes = [[0u8; 32]; 3];
         for (idx, value) in state.iter().enumerate() {
             final_bytes[idx] = to_bytes(*value);

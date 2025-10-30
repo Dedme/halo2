@@ -20,11 +20,11 @@ impl Spec<Fp, 3, 2> for P128Pow7T3 {
     }
 
     fn partial_rounds() -> usize {
-        48  // Even number required for gadget (processes 2 partial rounds per circuit row)
+        48 // Even number required for gadget (processes 2 partial rounds per circuit row)
     }
 
     fn sbox(val: Fp) -> Fp {
-        val.pow_vartime([7])  // Changed from x^5 to x^7 (Aleph Zero optimization)
+        val.pow_vartime([7]) // Changed from x^5 to x^7 (Aleph Zero optimization)
     }
 
     fn secure_mds() -> usize {
@@ -68,7 +68,7 @@ impl Spec<Fq, 3, 2> for P128Pow7T3 {
 
 #[cfg(test)]
 mod tests {
-    const POW7_ROUNDS: usize = 56;  // 8 full + 48 partial
+    const POW7_ROUNDS: usize = 56; // 8 full + 48 partial
 
     use alloc::vec::Vec;
     use core::marker::PhantomData;
@@ -124,7 +124,7 @@ mod tests {
         // to optimize for the x^7 S-box, so we don't compare against generate_constants
         assert_eq!(fp_pow7::ROUND_CONSTANTS.len(), POW7_ROUNDS);
         assert_eq!(fq_pow7::ROUND_CONSTANTS.len(), POW7_ROUNDS);
-        
+
         // Verify MDS matrices are correctly sized
         assert_eq!(fp_pow7::MDS.len(), 3);
         assert_eq!(fp_pow7::MDS[0].len(), 3);
