@@ -130,6 +130,13 @@ impl<F, B> Polynomial<F, B> {
     pub fn num_coeffs(&self) -> usize {
         self.values.len()
     }
+
+    pub(crate) fn from_raw(values: Vec<F>) -> Self {
+        Polynomial {
+            values,
+            _marker: PhantomData,
+        }
+    }
 }
 
 pub(crate) fn batch_invert_assigned<F: Field>(

@@ -1,8 +1,12 @@
-use super::circuit::{Any, Column};
+use super::circuit::{self, Any, Column};
 use crate::{
     arithmetic::CurveAffine,
+    helpers::{CurveRead, CurveWrite},
+    io_utils,
     poly::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial},
 };
+use group::ff::PrimeField;
+use std::io::{self, Read, Write};
 
 pub(crate) mod keygen;
 pub(crate) mod prover;
@@ -67,6 +71,44 @@ impl Argument {
     pub(crate) fn get_columns(&self) -> Vec<Column<Any>> {
         self.columns.clone()
     }
+
+    pub(crate) fn write<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        let columns = self.get_columns();
+        io_utils::write_vec(writer, &columns, |w, column| {
+            io_utils::write_usize(w, column.index())?;
+            let column_type = match column.column_type() {
+                Any::Advice => 0u8,
+                Any::Fixed => 1u8,
+                Any::Instance => 2u8,
+            };
+            io_utils::write_u8(w, column_type)
+        })
+    }
+
+    pub(crate) fn read<R: Read>(reader: &mut R) -> io::Result<Self> {
+        let columns = io_utils::read_vec(reader, |r| {
+            let index = io_utils::read_usize(r)?;
+            let column_type = match io_utils::read_u8(r)? {
+                0 => Any::Advice,
+                1 => Any::Fixed,
+                2 => Any::Instance,
+                other => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("invalid column type tag {other}"),
+                    ))
+                }
+            };
+            Ok(circuit::make_any_column(index, column_type))
+        })?;
+
+        let mut argument = Argument::new();
+        for column in columns {
+            argument.add_column(column);
+        }
+
+        Ok(argument)
+    }
 }
 
 /// The verifying key for a single permutation argument.
@@ -81,4 +123,46 @@ pub(crate) struct ProvingKey<C: CurveAffine> {
     permutations: Vec<Polynomial<C::Scalar, LagrangeCoeff>>,
     polys: Vec<Polynomial<C::Scalar, Coeff>>,
     pub(super) cosets: Vec<Polynomial<C::Scalar, ExtendedLagrangeCoeff>>,
+}
+
+impl<C: CurveAffine> VerifyingKey<C> {
+    pub(crate) fn write<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        io_utils::write_vec(writer, &self.commitments, |w, commitment| {
+            commitment.write(w)
+        })
+    }
+
+    pub(crate) fn read<R: Read>(reader: &mut R) -> io::Result<Self> {
+        let commitments = io_utils::read_vec(reader, |r| C::read(r))?;
+        Ok(VerifyingKey { commitments })
+    }
+}
+
+impl<C: CurveAffine> ProvingKey<C>
+where
+    C::Scalar: PrimeField,
+{
+    pub(crate) fn write<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        io_utils::write_vec(writer, &self.permutations, |w, poly| {
+            io_utils::write_polynomial(w, poly)
+        })?;
+        io_utils::write_vec(writer, &self.polys, |w, poly| {
+            io_utils::write_polynomial(w, poly)
+        })?;
+        io_utils::write_vec(writer, &self.cosets, |w, poly| {
+            io_utils::write_polynomial(w, poly)
+        })
+    }
+
+    pub(crate) fn read<R: Read>(reader: &mut R) -> io::Result<Self> {
+        let permutations = io_utils::read_vec(reader, |r| io_utils::read_polynomial(r))?;
+        let polys = io_utils::read_vec(reader, |r| io_utils::read_polynomial(r))?;
+        let cosets = io_utils::read_vec(reader, |r| io_utils::read_polynomial(r))?;
+
+        Ok(ProvingKey {
+            permutations,
+            polys,
+            cosets,
+        })
+    }
 }

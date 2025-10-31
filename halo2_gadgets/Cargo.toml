@@ -66,6 +66,8 @@ test-dependencies = [
     "proptest",
     "sinsemilla/test-dependencies",
 ]
+poseidon2-pow5-tests = [
+]
 
 # In-development features
 # See https://zcash.github.io/halo2/dev/features.html

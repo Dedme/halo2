@@ -1,5 +1,5 @@
 use ff::PrimeField;
-use halo2_poseidon2::{ConstantLength, Hash, P128Pow5T3, Spec, permute};
+use halo2_poseidon2::{permute, ConstantLength, Hash, P128Pow5T3, Spec};
 use pasta_curves::{pallas::Base as Fp, vesta::Base as Fq};
 
 fn main() {

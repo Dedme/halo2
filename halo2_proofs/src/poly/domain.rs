@@ -473,6 +473,11 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         self.quotient_poly_degree as usize
     }
 
+    /// Get the power `k` such that the domain size is `2^k`.
+    pub fn get_k(&self) -> u32 {
+        self.k
+    }
+
     /// Obtain a pinned version of this evaluation domain; a structure with the
     /// minimal parameters needed to determine the rest of the evaluation
     /// domain.

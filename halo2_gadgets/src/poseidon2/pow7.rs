@@ -100,7 +100,7 @@ impl<F: Field, const WIDTH: usize, const RATE: usize> Pow7Chip<F, WIDTH, RATE> {
             v4 * v2 * v
         };
 
-    let mat_external_first_layer = mat_external;
+        let mat_external_first_layer = mat_external;
         meta.create_gate("first layer", move |meta| {
             let s_first = meta.query_selector(s_first);
 
@@ -127,7 +127,7 @@ impl<F: Field, const WIDTH: usize, const RATE: usize> Pow7Chip<F, WIDTH, RATE> {
             Constraints::with_selector(s_first, constraints)
         });
 
-    let mat_external_full_gate = mat_external;
+        let mat_external_full_gate = mat_external;
         meta.create_gate("full round", |meta| {
             let s_full = meta.query_selector(s_full);
 
@@ -151,8 +151,8 @@ impl<F: Field, const WIDTH: usize, const RATE: usize> Pow7Chip<F, WIDTH, RATE> {
             )
         });
 
-    let mat_internal_partial_gate = mat_internal;
-    let mat_internal_diag_partial = mat_internal_diag_m_1;
+        let mat_internal_partial_gate = mat_internal;
+        let mat_internal_diag_partial = mat_internal_diag_m_1;
         let use_internal_diag_partial = use_internal_diag;
         meta.create_gate("partial rounds", move |meta| {
             let s_partial = meta.query_selector(s_partial);

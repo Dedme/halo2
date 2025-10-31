@@ -1,14 +1,17 @@
 use core::cmp::max;
 use core::ops::{Add, Mul};
 use ff::Field;
+use group::ff::PrimeField;
 use std::{
     convert::TryFrom,
+    io::{self, Read, Write},
     ops::{Neg, Sub},
 };
 
 use super::{lookup, permutation, Assigned, Error};
 use crate::{
     circuit::{Layouter, Region, Value},
+    io_utils,
     poly::Rotation,
 };
 
@@ -156,6 +159,31 @@ impl From<Column<Instance>> for Column<Any> {
             index: advice.index(),
             column_type: Any::Instance,
         }
+    }
+}
+
+pub(crate) fn make_any_column(index: usize, column_type: Any) -> Column<Any> {
+    Column { index, column_type }
+}
+
+pub(crate) fn make_advice_column(index: usize) -> Column<Advice> {
+    Column {
+        index,
+        column_type: Advice,
+    }
+}
+
+pub(crate) fn make_fixed_column(index: usize) -> Column<Fixed> {
+    Column {
+        index,
+        column_type: Fixed,
+    }
+}
+
+pub(crate) fn make_instance_column(index: usize) -> Column<Instance> {
+    Column {
+        index,
+        column_type: Instance,
     }
 }
 
@@ -1469,6 +1497,346 @@ impl<F: Field> ConstraintSystem<F> {
                 // permutation polynomial between the roles of l_last, l_0
                 // and the interstitial values.)
             + 1 // for at least one row
+    }
+}
+
+impl<F: PrimeField> ConstraintSystem<F> {
+    pub(crate) fn write<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        io_utils::write_usize(writer, self.num_fixed_columns)?;
+        io_utils::write_usize(writer, self.num_advice_columns)?;
+        io_utils::write_usize(writer, self.num_instance_columns)?;
+        io_utils::write_usize(writer, self.num_selectors)?;
+        io_utils::write_vec(writer, &self.selector_map, |w, column| {
+            io_utils::write_usize(w, column.index())
+        })?;
+        io_utils::write_vec(writer, &self.gates, |w, gate| Self::write_gate(w, gate))?;
+        io_utils::write_vec(writer, &self.advice_queries, |w, (column, rotation)| {
+            io_utils::write_usize(w, column.index())?;
+            Self::write_rotation(w, *rotation)
+        })?;
+        io_utils::write_vec(writer, &self.num_advice_queries, |w, value| {
+            io_utils::write_usize(w, *value)
+        })?;
+        io_utils::write_vec(writer, &self.instance_queries, |w, (column, rotation)| {
+            io_utils::write_usize(w, column.index())?;
+            Self::write_rotation(w, *rotation)
+        })?;
+        io_utils::write_vec(writer, &self.fixed_queries, |w, (column, rotation)| {
+            io_utils::write_usize(w, column.index())?;
+            Self::write_rotation(w, *rotation)
+        })?;
+        self.permutation.write(writer)?;
+        io_utils::write_vec(writer, &self.lookups, |w, lookup| {
+            Self::write_lookup(w, lookup)
+        })?;
+        io_utils::write_vec(writer, &self.constants, |w, column| {
+            io_utils::write_usize(w, column.index())
+        })?;
+        match self.minimum_degree {
+            Some(value) => {
+                io_utils::write_bool(writer, true)?;
+                io_utils::write_usize(writer, value)?;
+            }
+            None => io_utils::write_bool(writer, false)?,
+        }
+        Ok(())
+    }
+
+    pub(crate) fn read<R: Read>(reader: &mut R) -> io::Result<Self> {
+        let num_fixed_columns = io_utils::read_usize(reader)?;
+        let num_advice_columns = io_utils::read_usize(reader)?;
+        let num_instance_columns = io_utils::read_usize(reader)?;
+        let num_selectors = io_utils::read_usize(reader)?;
+        let selector_map = io_utils::read_vec(reader, |r| {
+            let index = io_utils::read_usize(r)?;
+            Ok(make_fixed_column(index))
+        })?;
+        let gates = io_utils::read_vec(reader, |r| Self::read_gate(r))?;
+        let advice_queries = io_utils::read_vec(reader, |r| {
+            let index = io_utils::read_usize(r)?;
+            let rotation = Self::read_rotation(r)?;
+            Ok((make_advice_column(index), rotation))
+        })?;
+        let num_advice_queries = io_utils::read_vec(reader, |r| io_utils::read_usize(r))?;
+        let instance_queries = io_utils::read_vec(reader, |r| {
+            let index = io_utils::read_usize(r)?;
+            let rotation = Self::read_rotation(r)?;
+            Ok((make_instance_column(index), rotation))
+        })?;
+        let fixed_queries = io_utils::read_vec(reader, |r| {
+            let index = io_utils::read_usize(r)?;
+            let rotation = Self::read_rotation(r)?;
+            Ok((make_fixed_column(index), rotation))
+        })?;
+        let permutation = permutation::Argument::read(reader)?;
+        let lookups = io_utils::read_vec(reader, |r| Self::read_lookup(r))?;
+        let constants = io_utils::read_vec(reader, |r| {
+            let index = io_utils::read_usize(r)?;
+            Ok(make_fixed_column(index))
+        })?;
+        let minimum_degree = if io_utils::read_bool(reader)? {
+            Some(io_utils::read_usize(reader)?)
+        } else {
+            None
+        };
+
+        Ok(ConstraintSystem {
+            num_fixed_columns,
+            num_advice_columns,
+            num_instance_columns,
+            num_selectors,
+            selector_map,
+            gates,
+            advice_queries,
+            num_advice_queries,
+            instance_queries,
+            fixed_queries,
+            permutation,
+            lookups,
+            constants,
+            minimum_degree,
+        })
+    }
+
+    fn write_gate<W: Write>(writer: &mut W, gate: &Gate<F>) -> io::Result<()> {
+        io_utils::write_str(writer, gate.name)?;
+        io_utils::write_vec(writer, &gate.constraint_names, |w, name| {
+            io_utils::write_str(w, name)
+        })?;
+        io_utils::write_vec(writer, &gate.polys, |w, expr| {
+            Self::write_expression(w, expr)
+        })?;
+        io_utils::write_vec(writer, &gate.queried_selectors, |w, selector| {
+            Self::write_selector(w, *selector)
+        })?;
+        io_utils::write_vec(writer, &gate.queried_cells, |w, cell| {
+            Self::write_virtual_cell(w, cell)
+        })?;
+        Ok(())
+    }
+
+    fn read_gate<R: Read>(reader: &mut R) -> io::Result<Gate<F>> {
+        let name = io_utils::read_string(reader)?;
+        let constraint_names_owned = io_utils::read_vec(reader, |r| io_utils::read_string(r))?;
+        let polys = io_utils::read_vec(reader, |r| Self::read_expression(r))?;
+        let queried_selectors = io_utils::read_vec(reader, |r| Self::read_selector(r))?;
+        let queried_cells = io_utils::read_vec(reader, |r| Self::read_virtual_cell(r))?;
+
+        let name = Box::leak(name.into_boxed_str()) as &'static str;
+        let constraint_names = constraint_names_owned
+            .into_iter()
+            .map(|name| Box::leak(name.into_boxed_str()) as &'static str)
+            .collect();
+
+        Ok(Gate {
+            name,
+            constraint_names,
+            polys,
+            queried_selectors,
+            queried_cells,
+        })
+    }
+
+    fn write_selector<W: Write>(writer: &mut W, selector: Selector) -> io::Result<()> {
+        io_utils::write_usize(writer, selector.0)?;
+        io_utils::write_bool(writer, selector.1)
+    }
+
+    fn read_selector<R: Read>(reader: &mut R) -> io::Result<Selector> {
+        let index = io_utils::read_usize(reader)?;
+        let is_simple = io_utils::read_bool(reader)?;
+        Ok(Selector(index, is_simple))
+    }
+
+    fn write_rotation<W: Write>(writer: &mut W, rotation: Rotation) -> io::Result<()> {
+        io_utils::write_i32(writer, rotation.0)
+    }
+
+    fn read_rotation<R: Read>(reader: &mut R) -> io::Result<Rotation> {
+        Ok(Rotation(io_utils::read_i32(reader)?))
+    }
+
+    fn write_fixed_query<W: Write>(writer: &mut W, query: &FixedQuery) -> io::Result<()> {
+        io_utils::write_usize(writer, query.index)?;
+        io_utils::write_usize(writer, query.column_index)?;
+        Self::write_rotation(writer, query.rotation)
+    }
+
+    fn read_fixed_query<R: Read>(reader: &mut R) -> io::Result<FixedQuery> {
+        let index = io_utils::read_usize(reader)?;
+        let column_index = io_utils::read_usize(reader)?;
+        let rotation = Self::read_rotation(reader)?;
+        Ok(FixedQuery {
+            index,
+            column_index,
+            rotation,
+        })
+    }
+
+    fn write_advice_query<W: Write>(writer: &mut W, query: &AdviceQuery) -> io::Result<()> {
+        io_utils::write_usize(writer, query.index)?;
+        io_utils::write_usize(writer, query.column_index)?;
+        Self::write_rotation(writer, query.rotation)
+    }
+
+    fn read_advice_query<R: Read>(reader: &mut R) -> io::Result<AdviceQuery> {
+        let index = io_utils::read_usize(reader)?;
+        let column_index = io_utils::read_usize(reader)?;
+        let rotation = Self::read_rotation(reader)?;
+        Ok(AdviceQuery {
+            index,
+            column_index,
+            rotation,
+        })
+    }
+
+    fn write_instance_query<W: Write>(writer: &mut W, query: &InstanceQuery) -> io::Result<()> {
+        io_utils::write_usize(writer, query.index)?;
+        io_utils::write_usize(writer, query.column_index)?;
+        Self::write_rotation(writer, query.rotation)
+    }
+
+    fn read_instance_query<R: Read>(reader: &mut R) -> io::Result<InstanceQuery> {
+        let index = io_utils::read_usize(reader)?;
+        let column_index = io_utils::read_usize(reader)?;
+        let rotation = Self::read_rotation(reader)?;
+        Ok(InstanceQuery {
+            index,
+            column_index,
+            rotation,
+        })
+    }
+
+    fn write_column_any<W: Write>(writer: &mut W, column: Column<Any>) -> io::Result<()> {
+        io_utils::write_usize(writer, column.index())?;
+        let tag = match column.column_type() {
+            Any::Advice => 0u8,
+            Any::Fixed => 1u8,
+            Any::Instance => 2u8,
+        };
+        io_utils::write_u8(writer, tag)
+    }
+
+    fn read_column_any<R: Read>(reader: &mut R) -> io::Result<Column<Any>> {
+        let index = io_utils::read_usize(reader)?;
+        let tag = io_utils::read_u8(reader)?;
+        let column_type = match tag {
+            0 => Any::Advice,
+            1 => Any::Fixed,
+            2 => Any::Instance,
+            other => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("invalid column type tag {other}"),
+                ))
+            }
+        };
+        Ok(make_any_column(index, column_type))
+    }
+
+    fn write_virtual_cell<W: Write>(writer: &mut W, cell: &VirtualCell) -> io::Result<()> {
+        Self::write_column_any(writer, cell.column)?;
+        Self::write_rotation(writer, cell.rotation)
+    }
+
+    fn read_virtual_cell<R: Read>(reader: &mut R) -> io::Result<VirtualCell> {
+        let column = Self::read_column_any(reader)?;
+        let rotation = Self::read_rotation(reader)?;
+        Ok(VirtualCell { column, rotation })
+    }
+
+    fn write_expression<W: Write>(writer: &mut W, expr: &Expression<F>) -> io::Result<()> {
+        match expr {
+            Expression::Constant(value) => {
+                io_utils::write_u8(writer, 0)?;
+                io_utils::write_field(writer, value)
+            }
+            Expression::Selector(selector) => {
+                io_utils::write_u8(writer, 1)?;
+                Self::write_selector(writer, *selector)
+            }
+            Expression::Fixed(query) => {
+                io_utils::write_u8(writer, 2)?;
+                Self::write_fixed_query(writer, query)
+            }
+            Expression::Advice(query) => {
+                io_utils::write_u8(writer, 3)?;
+                Self::write_advice_query(writer, query)
+            }
+            Expression::Instance(query) => {
+                io_utils::write_u8(writer, 4)?;
+                Self::write_instance_query(writer, query)
+            }
+            Expression::Negated(inner) => {
+                io_utils::write_u8(writer, 5)?;
+                Self::write_expression(writer, inner)
+            }
+            Expression::Sum(a, b) => {
+                io_utils::write_u8(writer, 6)?;
+                Self::write_expression(writer, a)?;
+                Self::write_expression(writer, b)
+            }
+            Expression::Product(a, b) => {
+                io_utils::write_u8(writer, 7)?;
+                Self::write_expression(writer, a)?;
+                Self::write_expression(writer, b)
+            }
+            Expression::Scaled(inner, scalar) => {
+                io_utils::write_u8(writer, 8)?;
+                Self::write_expression(writer, inner)?;
+                io_utils::write_field(writer, scalar)
+            }
+        }
+    }
+
+    fn read_expression<R: Read>(reader: &mut R) -> io::Result<Expression<F>> {
+        match io_utils::read_u8(reader)? {
+            0 => Ok(Expression::Constant(io_utils::read_field(reader)?)),
+            1 => Ok(Expression::Selector(Self::read_selector(reader)?)),
+            2 => Ok(Expression::Fixed(Self::read_fixed_query(reader)?)),
+            3 => Ok(Expression::Advice(Self::read_advice_query(reader)?)),
+            4 => Ok(Expression::Instance(Self::read_instance_query(reader)?)),
+            5 => Ok(Expression::Negated(Box::new(Self::read_expression(
+                reader,
+            )?))),
+            6 => {
+                let a = Self::read_expression(reader)?;
+                let b = Self::read_expression(reader)?;
+                Ok(Expression::Sum(Box::new(a), Box::new(b)))
+            }
+            7 => {
+                let a = Self::read_expression(reader)?;
+                let b = Self::read_expression(reader)?;
+                Ok(Expression::Product(Box::new(a), Box::new(b)))
+            }
+            8 => {
+                let inner = Self::read_expression(reader)?;
+                let scalar = io_utils::read_field(reader)?;
+                Ok(Expression::Scaled(Box::new(inner), scalar))
+            }
+            other => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid expression tag {other}"),
+            )),
+        }
+    }
+
+    fn write_lookup<W: Write>(writer: &mut W, lookup: &lookup::Argument<F>) -> io::Result<()> {
+        io_utils::write_vec(writer, &lookup.input_expressions, |w, expr| {
+            Self::write_expression(w, expr)
+        })?;
+        io_utils::write_vec(writer, &lookup.table_expressions, |w, expr| {
+            Self::write_expression(w, expr)
+        })
+    }
+
+    fn read_lookup<R: Read>(reader: &mut R) -> io::Result<lookup::Argument<F>> {
+        let input_expressions = io_utils::read_vec(reader, |r| Self::read_expression(r))?;
+        let table_expressions = io_utils::read_vec(reader, |r| Self::read_expression(r))?;
+        Ok(lookup::Argument {
+            input_expressions,
+            table_expressions,
+        })
     }
 }
 

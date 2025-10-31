@@ -14,3 +14,12 @@ pub(crate) trait CurveRead: CurveAffine {
 }
 
 impl<C: CurveAffine> CurveRead for C {}
+
+pub(crate) trait CurveWrite: CurveAffine {
+    /// Writes the compressed element to the provided buffer using `to_bytes`.
+    fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+        writer.write_all(self.to_bytes().as_ref())
+    }
+}
+
+impl<C: CurveAffine> CurveWrite for C {}
